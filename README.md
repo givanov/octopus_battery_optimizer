@@ -83,7 +83,6 @@ the integration evaluates the current situation and picks a **mode**:
 | **Top-up target** | `5` | % – top the battery back up to this SoC |
 | **Charge target** | `100` | % – how full to charge during the cheap block |
 | **Evaluation interval** | `5` | minutes between re-evaluations |
-| **Dry run mode** | `off` | Compute the schedule but don't touch the switches (see below) |
 
 > **Tariff code note:** the defaults target the current *Agile Octopus* tariff.
 > If your account shows a different product/tariff code (Octopus changes these
@@ -91,8 +90,9 @@ the integration evaluates the current situation and picks a **mode**:
 > `https://api.octopus.energy/v1/products`. The unit rates are the same across
 > payment-method variants, so any `E-1R-AGILE-…` variant will work.
 
-All options can be changed later via **Settings → Devices & Services →
-Octopus Battery Optimizer → ⋮ → Configure**.
+All of the above can be changed later via **Settings → Devices & Services →
+Octopus Battery Optimizer → ⋮ → Configure**. The **Dry run mode** is *not* an
+option – it is a live switch on the device (see below) that you toggle directly.
 
 ---
 
@@ -104,6 +104,10 @@ the cheapest/most-expensive blocks, and reports the would-be mode in the
 sensors – but it **does not change either physical switch**. This is useful
 when you want to see what the integration *would* do (or drive the battery
 manually) without it fighting you for the switches.
+
+The setting **persists** across restarts: toggling the switch writes the value
+into the config entry, so it is the single source of truth (it is deliberately
+kept out of the options flow so the two can't disagree).
 
 Turn it back **OFF** to resume automatic control; the current mode's switch
 states are re-applied at that point.
