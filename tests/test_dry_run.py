@@ -1,0 +1,154 @@
+"""Unit tests for the dry-run persistence logic in the controller.
+
+Verifies that the dry-run flag (a runtime toggle owned by the switch entity
+and stored in entry.data) is read with the correct precedence, so a stale
+copy left in entry.options by an older version cannot override the switch.
+
+Run with:  python3 -m unittest discover -s tests -v
+(No real Home Assistant required - minimal stubs are injected.)
+"""
+
+from __future__ import annotations
+
+import sys
+import types
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock
+
+ROOT = Path(__file__).resolve().parent.parent
+PKG_DIR = ROOT / "custom_components" / "octopus_battery"
+
+
+def _install_ha_stubs() -> None:
+    """Inject minimal homeassistant.* stubs so controller.py can import."""
+    if "homeassistant" in sys.modules:
+        return
+
+    def mod(name: str) -> types.ModuleType:
+        m = types.ModuleType(name)
+        sys.modules[name] = m
+        return m
+
+    ha = mod("homeassistant")
+
+    const = mod("homeassistant.const")
+    const.ATTR_ENTITY_ID = "entity_id"
+    const.STATE_ON = "on"
+    const.STATE_OFF = "off"
+    const.STATE_UNAVAILABLE = "unavailable"
+
+    entries = mod("homeassistant.config_entries")
+    class ConfigEntry:  # minimal placeholder for the type hint
+        pass
+    entries.ConfigEntry = ConfigEntry
+
+    core = mod("homeassistant.core")
+    class HomeAssistant:  # minimal placeholder
+        pass
+    core.HomeAssistant = HomeAssistant
+
+    helpers = mod("homeassistant.helpers")
+    event = mod("homeassistant.helpers.event")
+    event.async_track_time_interval = lambda *a, **k: None
+    update_coordinator = mod("homeassistant.helpers.update_coordinator")
+    class DataUpdateCoordinator:
+        def __init__(self, *a, **k):
+            pass
+        @classmethod
+        def __class_getitem__(cls, item):
+            return cls
+    update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
+    class UpdateFailed(Exception):
+        pass
+    update_coordinator.UpdateFailed = UpdateFailed
+
+    util = mod("homeassistant.util")
+    dt = mod("homeassistant.util.dt")
+    dt.now = lambda tz=None: None
+
+    ha.const = const
+    ha.config_entries = entries
+    ha.core = core
+    ha.helpers = helpers
+    ha.util = util
+
+    # coordinator.py imports aiohttp at module level
+    aiohttp = mod("aiohttp")
+    class ClientSession:
+        def __init__(self, *a, **k):
+            pass
+    aiohttp.ClientSession = ClientSession
+    class ClientResponseError(Exception):
+        pass
+    aiohttp.ClientResponseError = ClientResponseError
+    class ClientError(Exception):
+        pass
+    aiohttp.ClientError = ClientError
+
+
+_install_ha_stubs()
+
+# Import const.py + controller.py without executing the package __init__.py.
+if "octopus_battery" not in sys.modules:
+    _pkg = types.ModuleType("octopus_battery")
+    _pkg.__path__ = [str(PKG_DIR)]
+    sys.modules["octopus_battery"] = _pkg
+
+from octopus_battery.const import CONF_DRY_RUN  # noqa: E402
+from octopus_battery.controller import BatteryController  # noqa: E402
+
+
+def _entry(data: dict, options: dict) -> MagicMock:
+    e = MagicMock()
+    e.data = data
+    e.options = options
+    e.entry_id = "test-entry"
+    return e
+
+
+class TestReadDryRun(unittest.TestCase):
+    """The dry-run flag must prefer the switch-owned entry.data value."""
+
+    def setUp(self) -> None:
+        # _read_dry_run is a pure reader; call it unbound with a dummy self.
+        self.read = BatteryController._read_dry_run
+        self.dummy = object()
+
+    def test_data_wins_over_stale_options(self) -> None:
+        # The bug scenario: switch set dry_run=True in entry.data, but an old
+        # options-flow copy still says False. entry.data must win.
+        entry = _entry(
+            data={CONF_DRY_RUN: True},
+            options={CONF_DRY_RUN: False},
+        )
+        self.assertIs(self.read(self.dummy, entry), True)
+
+    def test_data_false_wins_over_options_true(self) -> None:
+        entry = _entry(
+            data={CONF_DRY_RUN: False},
+            options={CONF_DRY_RUN: True},
+        )
+        self.assertIs(self.read(self.dummy, entry), False)
+
+    def test_falls_back_to_options(self) -> None:
+        # Legacy entry: only options has the key.
+        entry = _entry(data={}, options={CONF_DRY_RUN: True})
+        self.assertIs(self.read(self.dummy, entry), True)
+
+    def test_falls_back_to_legacy_read_only(self) -> None:
+        entry = _entry(data={"read_only": True}, options={})
+        self.assertIs(self.read(self.dummy, entry), True)
+
+    def test_defaults_to_false(self) -> None:
+        entry = _entry(data={}, options={})
+        self.assertIs(self.read(self.dummy, entry), False)
+
+    def test_coerces_truthy_strings(self) -> None:
+        # vol.Coerce(bool) yields real bools, but be defensive about truthiness.
+        entry = _entry(data={CONF_DRY_RUN: "1"}, options={})
+        self.assertIs(self.read(self.dummy, entry), True)
+
+
+if __name__ == "__main__":
+    unittest.main()

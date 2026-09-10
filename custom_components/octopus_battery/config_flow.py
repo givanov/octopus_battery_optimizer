@@ -84,9 +84,6 @@ BASE_SCHEMA = vol.Schema(
             vol.Coerce(int),
             vol.Range(min=MIN_CHECK_INTERVAL, max=MAX_CHECK_INTERVAL),
         ),
-        vol.Optional(
-            CONF_DRY_RUN, default=DEFAULT_DRY_RUN
-        ): vol.Coerce(bool),
     }
 )
 
@@ -157,6 +154,11 @@ class OctopusBatteryConfigFlow(ConfigFlow, domain=DOMAIN):
             {
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): vol.Coerce(str),
                 **BASE_SCHEMA.schema,
+                # Dry-run is a runtime toggle (driven by the switch entity).
+                # It is stored in entry.data and intentionally NOT part of the
+                # options flow, so toggling the switch is the single source of
+                # truth and a stale options copy can't override it.
+                vol.Optional(CONF_DRY_RUN, default=DEFAULT_DRY_RUN): vol.Coerce(bool),
             }
         )
         # Fill in the {charge_hours}/{use_hours} placeholders in the description

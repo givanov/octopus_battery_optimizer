@@ -68,17 +68,33 @@ class BatteryController:
         self.override: Optional[str] = None
         self.topup_active: bool = False
         # Dry-run mode: compute the schedule but don't touch the switches.
-        # Fall back to the old "read_only" key for entries created before the
-        # rename.
-        data = self._data
-        self.dry_run: bool = bool(
-            data.get(CONF_DRY_RUN, data.get("read_only", False))
-        )
+        # The dry-run flag is a runtime toggle owned by the switch entity and
+        # stored in entry.data. Prefer entry.data so a stale copy left in
+        # entry.options by an older version (when it was part of the options
+        # flow) cannot override the switch. Fall back to the legacy
+        # "read_only" key for entries created before the rename.
+        self.dry_run: bool = self._read_dry_run(entry)
 
         self._listeners: list[Listener] = []
         self._unsub_tick: Optional[Callable[[], None]] = None
         self._unsub_prices: Optional[Callable[[], None]] = None
         self._applied: Optional[tuple[bool, bool]] = None
+
+    def _read_dry_run(self, entry: ConfigEntry) -> bool:
+        """Resolve the dry-run flag, preferring the switch-owned entry.data.
+
+        Order: entry.data[dry_run] -> entry.options[dry_run] -> legacy
+        entry.data[read_only] -> False. This keeps the switch as the single
+        source of truth even for entries created by older versions where
+        dry_run was also written to entry.options.
+        """
+        if CONF_DRY_RUN in entry.data:
+            return bool(entry.data[CONF_DRY_RUN])
+        if CONF_DRY_RUN in entry.options:
+            return bool(entry.options[CONF_DRY_RUN])
+        if "read_only" in entry.data:
+            return bool(entry.data["read_only"])
+        return False
 
     # ------------------------------------------------------------------
     # Lifecycle
