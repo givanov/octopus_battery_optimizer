@@ -9,12 +9,13 @@ drives the two physical switches:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Callable, Optional
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID, STATE_ON
+from homeassistant.const import ATTR_ENTITY_ID, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
@@ -246,6 +247,10 @@ class BatteryController:
             _LOGGER.error("Switch entity %s not found", entity_id)
             return False
 
+        if state.state in (STATE_UNAVAILABLE, "unknown"):
+            _LOGGER.warning("Switch %s is %s; skipping", entity_id, state.state)
+            return False
+
         desired = STATE_ON if turn_on else "off"
         if state.state == desired:
             return True
@@ -258,20 +263,25 @@ class BatteryController:
                 {ATTR_ENTITY_ID: entity_id},
                 blocking=True,
             )
-        except Exception as err:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             _LOGGER.exception("Failed to call %s on %s", service, entity_id)
             return False
 
-        # Verify the switch actually changed state.
+        # Many switches (e.g. Shelly) report their new state asynchronously,
+        # so give them a moment before verifying.
+        await asyncio.sleep(0.5)
         new_state = self._hass.states.get(entity_id)
-        if new_state is None or new_state.state != desired:
-            _LOGGER.error(
-                "Switch %s did not reach state %s (now: %s)",
-                entity_id,
-                desired,
-                new_state.state if new_state else "missing",
-            )
-            return False
+        if new_state is not None and new_state.state == desired:
+            return True
+
+        # The command was sent; the switch may simply be slow to report back.
+        # Warn but treat as success so a slow device doesn't wedge the state machine.
+        _LOGGER.warning(
+            "Switch %s did not confirm state %s (now: %s)",
+            entity_id,
+            desired,
+            new_state.state if new_state else "missing",
+        )
         return True
 
     # ------------------------------------------------------------------

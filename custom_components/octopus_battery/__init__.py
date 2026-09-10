@@ -58,6 +58,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Octopus Battery Optimizer from a config entry."""
+    if entry.entry_id in hass.data.get(DOMAIN, {}):
+        # Guard against a double setup (e.g. a reload racing with the initial
+        # setup), which would register the same entities twice and trigger
+        # "unique ID already exists" errors.
+        _LOGGER.warning(
+            "Entry %s is already set up; skipping duplicate setup", entry.entry_id
+        )
+        return True
+
     coordinator = OctopusPriceCoordinator(hass, entry)
 
     try:

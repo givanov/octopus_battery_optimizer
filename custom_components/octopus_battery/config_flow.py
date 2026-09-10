@@ -159,11 +159,17 @@ class OctopusBatteryConfigFlow(ConfigFlow, domain=DOMAIN):
                 **BASE_SCHEMA.schema,
             }
         )
+        # Fill in the {charge_hours}/{use_hours} placeholders in the description
+        # with the current (or default) values so the frontend can format it.
+        current = user_input or {}
         return self.async_show_form(
             step_id="user",
             data_schema=schema,
             errors=errors,
-            description_placeholders={},
+            description_placeholders={
+                "charge_hours": current.get(CONF_CHARGE_HOURS, DEFAULT_CHARGE_HOURS),
+                "use_hours": current.get(CONF_USE_HOURS, DEFAULT_USE_HOURS),
+            },
         )
 
     async def async_step_options(
