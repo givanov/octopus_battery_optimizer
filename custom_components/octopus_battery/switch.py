@@ -7,17 +7,17 @@ any of the physical switches.
 
 from __future__ import annotations
 
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_DRY_RUN, DOMAIN
 from .controller import BatteryController
 
 
-class DryRunSwitch(Entity):
+class DryRunSwitch(SwitchEntity):
     """Toggle whether the integration is allowed to drive the switches."""
 
     _attr_name = "Dry run mode"

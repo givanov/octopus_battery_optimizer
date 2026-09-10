@@ -47,6 +47,9 @@ def _install_ha_stubs() -> None:
     class HomeAssistant:  # minimal placeholder
         pass
     core.HomeAssistant = HomeAssistant
+    def callback(func):  # HA's @callback marker
+        return func
+    core.callback = callback
 
     helpers = mod("homeassistant.helpers")
     event = mod("homeassistant.helpers.event")
@@ -63,6 +66,49 @@ def _install_ha_stubs() -> None:
         pass
     update_coordinator.UpdateFailed = UpdateFailed
 
+    # Base Entity: state defaults to STATE_UNKNOWN (this is the bug we guard against)
+    entity_mod = mod("homeassistant.helpers.entity")
+    class Entity:
+        hass = None
+        _attr_state = "unknown"
+        def __init__(self):
+            pass
+        @property
+        def state(self):
+            return self._attr_state
+        def async_write_ha_state(self):
+            pass
+        def async_will_remove_from_hass(self):
+            pass
+    entity_mod.Entity = Entity
+
+    # SwitchEntity: mirrors HA's ToggleEntity @final state -> on/off mapping
+    components = mod("homeassistant.components")
+    switch_mod = mod("homeassistant.components.switch")
+    class SwitchEntity(Entity):
+        _attr_is_on = None
+        @property
+        def state(self):
+            if (is_on := self.is_on) is None:
+                return None
+            return "on" if is_on else "off"
+        @property
+        def is_on(self):
+            return self._attr_is_on
+        async def async_turn_on(self, **kwargs):
+            raise NotImplementedError
+        async def async_turn_off(self, **kwargs):
+            raise NotImplementedError
+    switch_mod.SwitchEntity = SwitchEntity
+
+    # device_registry.DeviceInfo + entity_platform.AddEntitiesCallback
+    device_registry = mod("homeassistant.helpers.device_registry")
+    class DeviceInfo(dict):
+        pass
+    device_registry.DeviceInfo = DeviceInfo
+    entity_platform = mod("homeassistant.helpers.entity_platform")
+    entity_platform.AddEntitiesCallback = object
+
     util = mod("homeassistant.util")
     dt = mod("homeassistant.util.dt")
     dt.now = lambda tz=None: None
@@ -72,6 +118,7 @@ def _install_ha_stubs() -> None:
     ha.core = core
     ha.helpers = helpers
     ha.util = util
+    ha.components = components
 
     # coordinator.py imports aiohttp at module level
     aiohttp = mod("aiohttp")
@@ -148,6 +195,48 @@ class TestReadDryRun(unittest.TestCase):
         # vol.Coerce(bool) yields real bools, but be defensive about truthiness.
         entry = _entry(data={CONF_DRY_RUN: "1"}, options={})
         self.assertIs(self.read(self.dummy, entry), True)
+
+
+class TestSwitchState(unittest.TestCase):
+    """The Dry run switch must resolve to on/off, never 'unknown'.
+
+    Regression test: DryRunSwitch previously subclassed the base Entity,
+    whose state property returns STATE_UNKNOWN. It must subclass
+    SwitchEntity so is_on maps to an on/off state.
+    """
+
+    def _make_switch(self, dry_run) -> MagicMock:
+        from octopus_battery.switch import DryRunSwitch
+
+        controller = MagicMock()
+        controller.dry_run = dry_run
+        controller.add_listener = MagicMock()
+        controller.remove_listener = MagicMock()
+        entry = MagicMock()
+        entry.entry_id = "test-entry"
+        entry.title = "Test"
+        return DryRunSwitch(entry, controller)
+
+    def test_switch_is_a_switch_entity(self) -> None:
+        from homeassistant.components.switch import SwitchEntity
+        from octopus_battery.switch import DryRunSwitch
+
+        self.assertTrue(issubclass(DryRunSwitch, SwitchEntity))
+
+    def test_state_on_when_dry_run(self) -> None:
+        sw = self._make_switch(True)
+        self.assertEqual(sw.state, "on")
+
+    def test_state_off_when_not_dry_run(self) -> None:
+        sw = self._make_switch(False)
+        self.assertEqual(sw.state, "off")
+
+    def test_state_tracks_controller(self) -> None:
+        sw = self._make_switch(False)
+        self.assertEqual(sw.state, "off")
+        # Simulate the controller flipping the flag; state must follow.
+        sw._controller.dry_run = True
+        self.assertEqual(sw.state, "on")
 
 
 if __name__ == "__main__":
