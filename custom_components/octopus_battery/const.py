@@ -18,6 +18,7 @@ CONF_TOPUP_TRIGGER_SOC = "topup_trigger_soc"
 CONF_TOPUP_TARGET_SOC = "topup_target_soc"
 CONF_CHARGE_TARGET_SOC = "charge_target_soc"
 CONF_CHECK_INTERVAL = "check_interval"
+CONF_READ_ONLY = "read_only"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -32,6 +33,7 @@ DEFAULT_TOPUP_TRIGGER_SOC = 3
 DEFAULT_TOPUP_TARGET_SOC = 5
 DEFAULT_CHARGE_TARGET_SOC = 100
 DEFAULT_CHECK_INTERVAL = 5  # minutes
+DEFAULT_READ_ONLY = False
 
 # ---------------------------------------------------------------------------
 # Limits
@@ -70,4 +72,4 @@ OCTOPUS_API_TIMEOUT = 30  # seconds
 # ---------------------------------------------------------------------------
 # Platforms / storage
 # ---------------------------------------------------------------------------
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "switch"]

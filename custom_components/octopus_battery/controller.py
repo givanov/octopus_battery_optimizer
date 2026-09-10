@@ -30,6 +30,7 @@ from .const import (
     CONF_TOPUP_TARGET_SOC,
     CONF_TOPUP_TRIGGER_SOC,
     CONF_USE_HOURS,
+    CONF_READ_ONLY,
     DEFAULT_CHECK_INTERVAL,
     MODE_IDLE,
     VALID_MODES,
@@ -65,6 +66,7 @@ class BatteryController:
         self.last_error: Optional[str] = None
         self.override: Optional[str] = None
         self.topup_active: bool = False
+        self.read_only: bool = bool(self._data.get(CONF_READ_ONLY, False))
 
         self._listeners: list[Listener] = []
         self._unsub_tick: Optional[Callable[[], None]] = None
@@ -187,7 +189,12 @@ class BatteryController:
         self.use_block = use_block
         self.charge_block = charge_block
         self.mode = mode
-        await self._apply_switches(mode)
+        if self.read_only:
+            # Read-only mode: compute the schedule and mode but do NOT touch
+            # any physical switches.
+            _LOGGER.debug("Read-only mode: mode=%s (switches not changed)", mode)
+        else:
+            await self._apply_switches(mode)
         self._notify_listeners()
 
     # ------------------------------------------------------------------
@@ -274,4 +281,28 @@ class BatteryController:
     async def async_clear_override(self) -> None:
         self.override = None
         _LOGGER.info("Manual override cleared, resuming automatic control")
+        await self.async_evaluate()
+
+    # ------------------------------------------------------------------
+    # Read-only mode
+    # ------------------------------------------------------------------
+    def set_read_only(self, value: bool) -> None:
+        """Toggle read-only mode.
+
+        When enabled the integration keeps computing the schedule and the
+        would-be mode, but never changes the physical switches. The previous
+        ``_applied`` switch state is forgotten so that re-enabling control
+        re-applies the current mode's switches.
+        """
+        value = bool(value)
+        if value == self.read_only:
+            return
+        self.read_only = value
+        self._applied = None  # force re-apply when control resumes
+        _LOGGER.info("Read-only mode %s", "enabled" if value else "disabled")
+        self._notify_listeners()
+
+    async def async_set_read_only(self, value: bool) -> None:
+        """Toggle read-only mode and re-evaluate."""
+        self.set_read_only(value)
         await self.async_evaluate()

@@ -17,7 +17,8 @@
           "topup_trigger_soc": "Top-up trigger below ( % )",
           "topup_target_soc": "Top-up target ( % )",
           "charge_target_soc": "Charge target ( % )",
-          "check_interval": "Evaluation interval (minutes)"
+          "check_interval": "Evaluation interval (minutes)",
+          "read_only": "Read-only mode (compute schedule, don't touch switches)"
         }
       },
       "options": {
@@ -34,7 +35,8 @@
           "topup_trigger_soc": "Top-up trigger below ( % )",
           "topup_target_soc": "Top-up target ( % )",
           "charge_target_soc": "Charge target ( % )",
-          "check_interval": "Evaluation interval (minutes)"
+          "check_interval": "Evaluation interval (minutes)",
+          "read_only": "Read-only mode (compute schedule, don't touch switches)"
         }
       }
     },
@@ -90,6 +92,11 @@
         "discharging": "Discharging",
         "top_up": "Top up"
       }
+    }
+  },
+  "switch": {
+    "name": {
+      "read_only": "Read-only mode"
     }
   }
 }

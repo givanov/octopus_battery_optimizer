@@ -17,6 +17,7 @@ from .const import (
     CONF_DISCHARGE_STOP_SOC,
     CONF_NAME,
     CONF_PRODUCT_CODE,
+    CONF_READ_ONLY,
     CONF_SHELLY_SWITCH,
     CONF_SOC_SENSOR,
     CONF_TARIFF_CODE,
@@ -29,6 +30,7 @@ from .const import (
     DEFAULT_DISCHARGE_STOP_SOC,
     DEFAULT_NAME,
     DEFAULT_PRODUCT_CODE,
+    DEFAULT_READ_ONLY,
     DEFAULT_TARIFF_CODE,
     DEFAULT_TOPUP_TARGET_SOC,
     DEFAULT_TOPUP_TRIGGER_SOC,
@@ -82,6 +84,9 @@ BASE_SCHEMA = vol.Schema(
             vol.Coerce(int),
             vol.Range(min=MIN_CHECK_INTERVAL, max=MAX_CHECK_INTERVAL),
         ),
+        vol.Optional(
+            CONF_READ_ONLY, default=DEFAULT_READ_ONLY
+        ): vol.Coerce(bool),
     }
 )
 

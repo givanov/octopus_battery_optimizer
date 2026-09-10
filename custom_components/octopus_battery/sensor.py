@@ -12,13 +12,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import (
-    DOMAIN,
-    MODE_CHARGING,
-    MODE_DISCHARGING,
-    MODE_IDLE,
-    MODE_TOPUP,
-)
+from .const import DOMAIN
 from .controller import BatteryController
 
 PARITY = "p/kWh"
@@ -43,11 +37,16 @@ class BaseBatterySensor(Entity):
         entry: ConfigEntry,
         controller: BatteryController,
         translation_key: str,
+        name: str,
         device_class: Optional[str] = None,
     ) -> None:
         super().__init__()
         self._controller = controller
         self._attr_translation_key = translation_key
+        # Explicit name so sensors are labelled correctly even if the
+        # translation file is not loaded; the translation (if present)
+        # takes precedence.
+        self._attr_name = name
         self._attr_unique_id = f"{entry.entry_id}-{translation_key}"
         if device_class is not None:
             self._attr_device_class = device_class
@@ -71,6 +70,9 @@ class BaseBatterySensor(Entity):
 class ModeSensor(BaseBatterySensor):
     """Current controller mode."""
 
+    def __init__(self, entry: ConfigEntry, controller: BatteryController) -> None:
+        super().__init__(entry, controller, "mode", "Mode")
+
     @property
     def state(self) -> Optional[str]:
         return self._controller.mode
@@ -78,6 +80,7 @@ class ModeSensor(BaseBatterySensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
+            "read_only": self._controller.read_only,
             "override_active": self._controller.override is not None,
             "top_up_in_progress": self._controller.topup_active,
             "last_error": self._controller.last_error,
@@ -92,10 +95,11 @@ class BlockTimeSensor(BaseBatterySensor):
         entry: ConfigEntry,
         controller: BatteryController,
         translation_key: str,
+        name: str,
         block_attr: str,
         which: str,
     ) -> None:
-        super().__init__(entry, controller, translation_key)
+        super().__init__(entry, controller, translation_key, name)
         self._block_attr = block_attr
         self._which = which  # "start" | "end"
 
@@ -129,9 +133,10 @@ class BlockPriceSensor(BaseBatterySensor):
         entry: ConfigEntry,
         controller: BatteryController,
         translation_key: str,
+        name: str,
         block_attr: str,
     ) -> None:
-        super().__init__(entry, controller, translation_key)
+        super().__init__(entry, controller, translation_key, name)
         self._block_attr = block_attr
 
     @property
@@ -147,6 +152,9 @@ class SocSensor(BaseBatterySensor):
 
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, entry: ConfigEntry, controller: BatteryController) -> None:
+        super().__init__(entry, controller, "battery_soc", "Battery level")
 
     @property
     def state(self) -> Optional[float]:
@@ -164,27 +172,30 @@ async def async_setup_entry(
 
     async_add_entities(
         [
-            ModeSensor(entry, controller, "mode"),
+            ModeSensor(entry, controller),
             BlockTimeSensor(
-                entry, controller, "use_block_start", "use_block", "start"
+                entry, controller, "use_block_start", "Use block start",
+                "use_block", "start",
             ),
             BlockTimeSensor(
-                entry, controller, "use_block_end", "use_block", "end"
-            ),
-            BlockPriceSensor(entry, controller, "use_block_price", "use_block"),
-            BlockTimeSensor(
-                entry,
-                controller,
-                "charge_block_start",
-                "charge_block",
-                "start",
-            ),
-            BlockTimeSensor(
-                entry, controller, "charge_block_end", "charge_block", "end"
+                entry, controller, "use_block_end", "Use block end",
+                "use_block", "end",
             ),
             BlockPriceSensor(
-                entry, controller, "charge_block_price", "charge_block"
+                entry, controller, "use_block_price", "Use block price", "use_block"
             ),
-            SocSensor(entry, controller, "battery_soc"),
+            BlockTimeSensor(
+                entry, controller, "charge_block_start", "Charge block start",
+                "charge_block", "start",
+            ),
+            BlockTimeSensor(
+                entry, controller, "charge_block_end", "Charge block end",
+                "charge_block", "end",
+            ),
+            BlockPriceSensor(
+                entry, controller, "charge_block_price", "Charge block price",
+                "charge_block",
+            ),
+            SocSensor(entry, controller),
         ]
     )

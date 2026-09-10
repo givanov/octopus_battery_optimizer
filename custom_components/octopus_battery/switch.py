@@ -1,0 +1,90 @@
+"""Switch platform for the Octopus Battery Optimizer integration.
+
+Exposes a single **Read-only mode** switch. When ON, the integration keeps
+computing the charge/use schedule and the would-be mode, but does not change
+any of the physical switches.
+"""
+
+from __future__ import annotations
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import CONF_READ_ONLY, DOMAIN
+from .controller import BatteryController
+
+
+class ReadOnlySwitch(Entity):
+    """Toggle whether the integration is allowed to drive the switches."""
+
+    _attr_name = "Read-only mode"
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(
+        self, entry: ConfigEntry, controller: BatteryController
+    ) -> None:
+        super().__init__()
+        self._entry = entry
+        self._controller = controller
+        self._attr_unique_id = f"{entry.entry_id}-read_only"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            manufacturer="community",
+            model="octopus battery optimizer",
+        )
+        self._attr_assumed_state = True
+        controller.add_listener(self._notify)
+
+    @callback
+    def _notify(self) -> None:
+        self.async_write_ha_state()
+
+    @callback
+    def async_will_remove_from_hass(self) -> None:
+        self._controller.remove_listener(self._notify)
+
+    @property
+    def is_on(self) -> bool:
+        return self._controller.read_only
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {
+            "mode": self._controller.mode,
+            "note": (
+                "When ON the schedule is still computed but the battery and "
+                "Shelly switches are left untouched."
+            ),
+        }
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self._set(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self._set(False)
+
+    async def _set(self, value: bool) -> None:
+        hass = self.hass
+        entry = self._entry
+        # Apply immediately (no reload) so the change is responsive.
+        await self._controller.async_set_read_only(value)
+        # Persist so the choice survives a restart.
+        if hass is not None and entry is not None:
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_READ_ONLY: value}
+            )
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the read-only switch."""
+    controller: BatteryController = hass.data[DOMAIN][entry.entry_id]["controller"]
+    async_add_entities([ReadOnlySwitch(entry, controller)])
