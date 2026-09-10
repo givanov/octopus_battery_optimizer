@@ -44,8 +44,10 @@ class DryRunSwitch(SwitchEntity):
     def _notify(self) -> None:
         self.async_write_ha_state()
 
-    @callback
-    def async_will_remove_from_hass(self) -> None:
+    async def async_will_remove_from_hass(self) -> None:
+        # Must be a coroutine: Home Assistant awaits this hook during entity
+        # removal. A sync @callback version returns None, so `await None`
+        # raises TypeError and the entity is never actually removed.
         self._controller.remove_listener(self._notify)
 
     @property

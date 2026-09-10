@@ -1,0 +1,25 @@
+set_mode:
+  fields:
+    mode:
+      required: true
+      selector:
+        select:
+          options:
+            - value: idle
+              label: Idle
+            - value: charging
+              label: Charging
+            - value: discharging
+              label: Discharging
+            - value: top_up
+              label: Top up
+    entry_id:
+      required: false
+      selector:
+        text:
+clear_override:
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:

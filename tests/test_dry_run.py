@@ -37,6 +37,12 @@ def _install_ha_stubs() -> None:
     const.STATE_ON = "on"
     const.STATE_OFF = "off"
     const.STATE_UNAVAILABLE = "unavailable"
+    const.PERCENTAGE = "%"
+    class EntityCategory:
+        DIAGNOSTIC = "diagnostic"
+        CONFIG = "config"
+        NONE = "none"
+    const.EntityCategory = EntityCategory
 
     entries = mod("homeassistant.config_entries")
     class ConfigEntry:  # minimal placeholder for the type hint
@@ -84,6 +90,10 @@ def _install_ha_stubs() -> None:
 
     # SwitchEntity: mirrors HA's ToggleEntity @final state -> on/off mapping
     components = mod("homeassistant.components")
+    sensor_comp = mod("homeassistant.components.sensor")
+    class SensorStateClass:
+        MEASUREMENT = "measurement"
+    sensor_comp.SensorStateClass = SensorStateClass
     switch_mod = mod("homeassistant.components.switch")
     class SwitchEntity(Entity):
         _attr_is_on = None
@@ -237,6 +247,55 @@ class TestSwitchState(unittest.TestCase):
         # Simulate the controller flipping the flag; state must follow.
         sw._controller.dry_run = True
         self.assertEqual(sw.state, "on")
+
+
+class TestEntityRemoval(unittest.TestCase):
+    """async_will_remove_from_hass must be awaitable.
+
+    Regression test: Home Assistant calls ``await entity.async_will_remove_from_hass()``
+    during entity removal. If the override is a sync @callback method it returns
+    None, so ``await None`` raises ``TypeError: 'NoneType' object can't be
+    awaited`` and the entity is never removed (causing 'unique ID already
+    exists' errors on reload). Both the sensor and switch must override it as a
+    coroutine.
+    """
+
+    def test_sensor_hook_is_coroutine(self) -> None:
+        import inspect
+        from octopus_battery.sensor import BaseBatterySensor
+
+        self.assertTrue(
+            inspect.iscoroutinefunction(BaseBatterySensor.async_will_remove_from_hass),
+            "BaseBatterySensor.async_will_remove_from_hass must be a coroutine",
+        )
+
+    def test_switch_hook_is_coroutine(self) -> None:
+        import inspect
+        from octopus_battery.switch import DryRunSwitch
+
+        self.assertTrue(
+            inspect.iscoroutinefunction(DryRunSwitch.async_will_remove_from_hass),
+            "DryRunSwitch.async_will_remove_from_hass must be a coroutine",
+        )
+
+    def test_switch_hook_removes_listener_when_awaited(self) -> None:
+        import asyncio
+        from octopus_battery.switch import DryRunSwitch
+
+        controller = MagicMock()
+        controller.add_listener = MagicMock()
+        controller.remove_listener = MagicMock()
+        entry = MagicMock()
+        entry.entry_id = "test-entry"
+        entry.title = "Test"
+        sw = DryRunSwitch(entry, controller)
+
+        # The listener is registered on construction.
+        controller.add_listener.assert_called_once()
+
+        # Awaiting the hook must unregister the listener (and not raise).
+        asyncio.run(sw.async_will_remove_from_hass())
+        controller.remove_listener.assert_called_once_with(sw._notify)
 
 
 if __name__ == "__main__":
