@@ -18,7 +18,7 @@
           "topup_target_soc": "Top-up target ( % )",
           "charge_target_soc": "Charge target ( % )",
           "check_interval": "Evaluation interval (minutes)",
-          "read_only": "Read-only mode (compute schedule, don't touch switches)"
+          "dry_run": "Dry run mode (compute schedule, don't touch switches)"
         }
       },
       "options": {
@@ -36,7 +36,7 @@
           "topup_target_soc": "Top-up target ( % )",
           "charge_target_soc": "Charge target ( % )",
           "check_interval": "Evaluation interval (minutes)",
-          "read_only": "Read-only mode (compute schedule, don't touch switches)"
+          "dry_run": "Dry run mode (compute schedule, don't touch switches)"
         }
       }
     },
@@ -96,7 +96,7 @@
   },
   "switch": {
     "name": {
-      "read_only": "Read-only mode"
+      "dry_run": "Dry run mode"
     }
   },
   "entity": {
@@ -131,8 +131,8 @@
       },
       "switch": {
         "entity": {
-          "read_only": {
-            "name": "Read-only mode"
+          "dry_run": {
+            "name": "Dry run mode"
           }
         }
       }

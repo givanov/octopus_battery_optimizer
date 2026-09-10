@@ -83,7 +83,7 @@ the integration evaluates the current situation and picks a **mode**:
 | **Top-up target** | `5` | % – top the battery back up to this SoC |
 | **Charge target** | `100` | % – how full to charge during the cheap block |
 | **Evaluation interval** | `5` | minutes between re-evaluations |
-| **Read-only mode** | `off` | Compute the schedule but don't touch the switches (see below) |
+| **Dry run mode** | `off` | Compute the schedule but don't touch the switches (see below) |
 
 > **Tariff code note:** the defaults target the current *Agile Octopus* tariff.
 > If your account shows a different product/tariff code (Octopus changes these
@@ -96,9 +96,9 @@ Octopus Battery Optimizer → ⋮ → Configure**.
 
 ---
 
-## Read-only mode
+## Dry run mode
 
-A **Read-only mode** switch is exposed on the device. When it is **ON**, the
+A **Dry run mode** switch is exposed on the device. When it is **ON**, the
 integration keeps doing all the thinking – it still fetches prices, works out
 the cheapest/most-expensive blocks, and reports the would-be mode in the
 sensors – but it **does not change either physical switch**. This is useful
@@ -116,14 +116,14 @@ The integration exposes a set of diagnostic sensors (grouped under one device):
 
 | Sensor | Description |
 |--------|-------------|
-| **Mode** | Current mode: `idle`, `charging`, `discharging`, `top_up` (plus `read_only`, `override_active`, `top_up_in_progress`, `last_error` attributes) |
+| **Mode** | Current mode: `idle`, `charging`, `discharging`, `top_up` (plus `dry_run`, `override_active`, `top_up_in_progress`, `last_error` attributes) |
 | **Use block start / end** | Start & end (HH:MM) of today's most-expensive block |
 | **Use block price** | Total price (p/kWh) of the use block |
 | **Charge block start / end** | Start & end (HH:MM) of today's cheapest block |
 | **Charge block price** | Total price (p/kWh) of the charge block |
 | **Battery level** | Mirror of the SoC sensor (%) |
 
-There is also a **Read-only mode** switch on the same device (see above).
+There is also a **Dry run mode** switch on the same device (see above).
 
 ---
 

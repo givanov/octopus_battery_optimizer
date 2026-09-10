@@ -18,7 +18,7 @@ CONF_TOPUP_TRIGGER_SOC = "topup_trigger_soc"
 CONF_TOPUP_TARGET_SOC = "topup_target_soc"
 CONF_CHARGE_TARGET_SOC = "charge_target_soc"
 CONF_CHECK_INTERVAL = "check_interval"
-CONF_READ_ONLY = "read_only"
+CONF_DRY_RUN = "dry_run"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -33,7 +33,7 @@ DEFAULT_TOPUP_TRIGGER_SOC = 3
 DEFAULT_TOPUP_TARGET_SOC = 5
 DEFAULT_CHARGE_TARGET_SOC = 100
 DEFAULT_CHECK_INTERVAL = 5  # minutes
-DEFAULT_READ_ONLY = False
+DEFAULT_DRY_RUN = False
 
 # ---------------------------------------------------------------------------
 # Limits

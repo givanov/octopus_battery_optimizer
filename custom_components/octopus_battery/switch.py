@@ -1,6 +1,6 @@
 """Switch platform for the Octopus Battery Optimizer integration.
 
-Exposes a single **Read-only mode** switch. When ON, the integration keeps
+Exposes a single **Dry run mode** switch. When ON, the integration keeps
 computing the charge/use schedule and the would-be mode, but does not change
 any of the physical switches.
 """
@@ -13,14 +13,14 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_READ_ONLY, DOMAIN
+from .const import CONF_DRY_RUN, DOMAIN
 from .controller import BatteryController
 
 
-class ReadOnlySwitch(Entity):
+class DryRunSwitch(Entity):
     """Toggle whether the integration is allowed to drive the switches."""
 
-    _attr_name = "Read-only mode"
+    _attr_name = "Dry run mode"
     _attr_has_entity_name = True
     _attr_should_poll = False
 
@@ -30,7 +30,7 @@ class ReadOnlySwitch(Entity):
         super().__init__()
         self._entry = entry
         self._controller = controller
-        self._attr_unique_id = f"{entry.entry_id}-read_only"
+        self._attr_unique_id = f"{entry.entry_id}-read_only"  # kept stable across the rename to avoid orphaning existing entities
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
@@ -50,7 +50,7 @@ class ReadOnlySwitch(Entity):
 
     @property
     def is_on(self) -> bool:
-        return self._controller.read_only
+        return self._controller.dry_run
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -72,11 +72,11 @@ class ReadOnlySwitch(Entity):
         hass = self.hass
         entry = self._entry
         # Apply immediately (no reload) so the change is responsive.
-        await self._controller.async_set_read_only(value)
+        await self._controller.async_set_dry_run(value)
         # Persist so the choice survives a restart.
         if hass is not None and entry is not None:
             hass.config_entries.async_update_entry(
-                entry, data={**entry.data, CONF_READ_ONLY: value}
+                entry, data={**entry.data, CONF_DRY_RUN: value}
             )
 
 
@@ -85,6 +85,6 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the read-only switch."""
+    """Set up the dry-run switch."""
     controller: BatteryController = hass.data[DOMAIN][entry.entry_id]["controller"]
-    async_add_entities([ReadOnlySwitch(entry, controller)])
+    async_add_entities([DryRunSwitch(entry, controller)])

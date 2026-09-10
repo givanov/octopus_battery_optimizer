@@ -80,7 +80,7 @@ class ModeSensor(BaseBatterySensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
-            "read_only": self._controller.read_only,
+            "dry_run": self._controller.dry_run,
             "override_active": self._controller.override is not None,
             "top_up_in_progress": self._controller.topup_active,
             "last_error": self._controller.last_error,

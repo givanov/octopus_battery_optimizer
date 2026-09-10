@@ -30,7 +30,7 @@ from .const import (
     CONF_TOPUP_TARGET_SOC,
     CONF_TOPUP_TRIGGER_SOC,
     CONF_USE_HOURS,
-    CONF_READ_ONLY,
+    CONF_DRY_RUN,
     DEFAULT_CHECK_INTERVAL,
     MODE_IDLE,
     VALID_MODES,
@@ -66,7 +66,13 @@ class BatteryController:
         self.last_error: Optional[str] = None
         self.override: Optional[str] = None
         self.topup_active: bool = False
-        self.read_only: bool = bool(self._data.get(CONF_READ_ONLY, False))
+        # Dry-run mode: compute the schedule but don't touch the switches.
+        # Fall back to the old "read_only" key for entries created before the
+        # rename.
+        data = self._data
+        self.dry_run: bool = bool(
+            data.get(CONF_DRY_RUN, data.get("read_only", False))
+        )
 
         self._listeners: list[Listener] = []
         self._unsub_tick: Optional[Callable[[], None]] = None
@@ -189,10 +195,10 @@ class BatteryController:
         self.use_block = use_block
         self.charge_block = charge_block
         self.mode = mode
-        if self.read_only:
-            # Read-only mode: compute the schedule and mode but do NOT touch
+        if self.dry_run:
+            # Dry-run mode: compute the schedule and mode but do NOT touch
             # any physical switches.
-            _LOGGER.debug("Read-only mode: mode=%s (switches not changed)", mode)
+            _LOGGER.debug("Dry-run mode: mode=%s (switches not changed)", mode)
         else:
             await self._apply_switches(mode)
         self._notify_listeners()
@@ -284,10 +290,10 @@ class BatteryController:
         await self.async_evaluate()
 
     # ------------------------------------------------------------------
-    # Read-only mode
+    # Dry-run mode
     # ------------------------------------------------------------------
-    def set_read_only(self, value: bool) -> None:
-        """Toggle read-only mode.
+    def set_dry_run(self, value: bool) -> None:
+        """Toggle dry-run mode.
 
         When enabled the integration keeps computing the schedule and the
         would-be mode, but never changes the physical switches. The previous
@@ -295,14 +301,14 @@ class BatteryController:
         re-applies the current mode's switches.
         """
         value = bool(value)
-        if value == self.read_only:
+        if value == self.dry_run:
             return
-        self.read_only = value
+        self.dry_run = value
         self._applied = None  # force re-apply when control resumes
-        _LOGGER.info("Read-only mode %s", "enabled" if value else "disabled")
+        _LOGGER.info("Dry-run mode %s", "enabled" if value else "disabled")
         self._notify_listeners()
 
-    async def async_set_read_only(self, value: bool) -> None:
-        """Toggle read-only mode and re-evaluate."""
-        self.set_read_only(value)
+    async def async_set_dry_run(self, value: bool) -> None:
+        """Toggle dry-run mode and re-evaluate."""
+        self.set_dry_run(value)
         await self.async_evaluate()
