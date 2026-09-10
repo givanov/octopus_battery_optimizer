@@ -1,0 +1,10 @@
+{
+  "domain": "octopus_battery",
+  "name": "Octopus Battery Optimizer",
+  "version": "1.0.0",
+  "codeowners": ["@givanov"],
+  "config_flow": true,
+  "documentation": "https://github.com/givanov/battery_charger",
+  "issue_tracker": "https://github.com/givanov/battery_charger/issues",
+  "iot_class": "cloud_polling"
+}

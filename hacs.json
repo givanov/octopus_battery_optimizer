@@ -1,0 +1,5 @@
+{
+  "name": "Octopus Battery Optimizer",
+  "render_readme": true,
+  "homeassistant": "2024.5.0"
+}

@@ -1,0 +1,95 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Octopus Battery Optimizer",
+        "description": "Charges your battery in the cheapest {charge_hours} hours and discharges it in the most expensive {use_hours} hours of the published Octopus prices.",
+        "data": {
+          "name": "Name",
+          "battery_switch": "Battery charging switch (smart plug)",
+          "shelly_switch": "Shelly contactor switch (ON = mains, OFF = battery)",
+          "soc_sensor": "Battery state-of-charge sensor (0-100 %)",
+          "use_hours": "Discharge block length (hours)",
+          "charge_hours": "Charge block length (hours)",
+          "product_code": "Octopus product code",
+          "tariff_code": "Octopus tariff code",
+          "discharge_stop_soc": "Stop discharging below ( % )",
+          "topup_trigger_soc": "Top-up trigger below ( % )",
+          "topup_target_soc": "Top-up target ( % )",
+          "charge_target_soc": "Charge target ( % )",
+          "check_interval": "Evaluation interval (minutes)"
+        }
+      },
+      "options": {
+        "title": "Octopus Battery Optimizer options",
+        "data": {
+          "battery_switch": "Battery charging switch (smart plug)",
+          "shelly_switch": "Shelly contactor switch (ON = mains, OFF = battery)",
+          "soc_sensor": "Battery state-of-charge sensor (0-100 %)",
+          "use_hours": "Discharge block length (hours)",
+          "charge_hours": "Charge block length (hours)",
+          "product_code": "Octopus product code",
+          "tariff_code": "Octopus tariff code",
+          "discharge_stop_soc": "Stop discharging below ( % )",
+          "topup_trigger_soc": "Top-up trigger below ( % )",
+          "topup_target_soc": "Top-up target ( % )",
+          "charge_target_soc": "Charge target ( % )",
+          "check_interval": "Evaluation interval (minutes)"
+        }
+      }
+    },
+    "error": {
+      "required": "Please select an entity",
+      "same_as_battery": "Must be a different switch from the battery switch",
+      "blocks_overlap": "Discharge + charge hours must be 24 or less",
+      "trigger_above_target": "Top-up trigger must be lower than the top-up target",
+      "stop_above_charge_target": "Discharge stop must be lower than the charge target"
+    }
+  },
+  "services": {
+    "set_mode": {
+      "name": "Set mode",
+      "description": "Force the battery into a specific mode. Automatic control is suspended until the override is cleared.",
+      "fields": {
+        "mode": {
+          "name": "Mode",
+          "description": "idle, charging, discharging or top_up"
+        },
+        "entry_id": {
+          "name": "Entry ID",
+          "description": "Optional config entry ID to target a specific battery (defaults to all)"
+        }
+      }
+    },
+    "clear_override": {
+      "name": "Clear override",
+      "description": "Resume automatic charge/discharge control.",
+      "fields": {
+        "entry_id": {
+          "name": "Entry ID",
+          "description": "Optional config entry ID to target a specific battery (defaults to all)"
+        }
+      }
+    }
+  },
+  "sensor": {
+    "name": {
+      "mode": "Mode",
+      "use_block_start": "Use block start",
+      "use_block_end": "Use block end",
+      "use_block_price": "Use block price",
+      "charge_block_start": "Charge block start",
+      "charge_block_end": "Charge block end",
+      "charge_block_price": "Charge block price",
+      "battery_soc": "Battery level"
+    },
+    "state": {
+      "mode": {
+        "idle": "Idle",
+        "charging": "Charging",
+        "discharging": "Discharging",
+        "top_up": "Top up"
+      }
+    }
+  }
+}
