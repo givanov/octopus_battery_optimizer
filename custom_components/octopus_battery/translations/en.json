@@ -98,5 +98,44 @@
     "name": {
       "read_only": "Read-only mode"
     }
+  },
+  "entity": {
+    "component": {
+      "sensor": {
+        "entity": {
+          "mode": {
+            "name": "Mode"
+          },
+          "use_block_start": {
+            "name": "Use block start"
+          },
+          "use_block_end": {
+            "name": "Use block end"
+          },
+          "use_block_price": {
+            "name": "Use block price"
+          },
+          "charge_block_start": {
+            "name": "Charge block start"
+          },
+          "charge_block_end": {
+            "name": "Charge block end"
+          },
+          "charge_block_price": {
+            "name": "Charge block price"
+          },
+          "battery_soc": {
+            "name": "Battery level"
+          }
+        }
+      },
+      "switch": {
+        "entity": {
+          "read_only": {
+            "name": "Read-only mode"
+          }
+        }
+      }
+    }
   }
 }
