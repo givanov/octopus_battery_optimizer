@@ -33,7 +33,7 @@ from .const import (
     CONF_USE_HOURS,
     CONF_DRY_RUN,
     DEFAULT_CHECK_INTERVAL,
-    MODE_IDLE,
+    MODE_IDLE_NOT_CHARGING,
     VALID_MODES,
 )
 from .coordinator import OctopusPriceCoordinator
@@ -59,7 +59,7 @@ class BatteryController:
         self._coordinator = coordinator
         self._data = effective_data(entry)
 
-        self.mode: str = MODE_IDLE
+        self.mode: str = MODE_IDLE_NOT_CHARGING
         self.use_block: Optional[Block] = None
         self.charge_block: Optional[Block] = None
         self.soc: Optional[float] = None

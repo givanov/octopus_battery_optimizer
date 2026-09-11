@@ -26,7 +26,8 @@ if "octopus_battery" not in sys.modules:
 from octopus_battery.const import (  # noqa: E402
     MODE_CHARGING,
     MODE_DISCHARGING,
-    MODE_IDLE,
+    MODE_IDLE_FLOATING,
+    MODE_IDLE_NOT_CHARGING,
     MODE_TOPUP,
 )
 from octopus_battery.schedule import (  # noqa: E402
@@ -193,9 +194,9 @@ class DecideModeTest(unittest.TestCase):
 
     def test_use_block_stops_at_threshold(self):
         mode, _ = self.decide(soc=5.0, use=self.block(*self.USE))
-        self.assertEqual(mode, MODE_IDLE)
+        self.assertEqual(mode, MODE_IDLE_NOT_CHARGING)
         mode, _ = self.decide(soc=4.0, use=self.block(*self.USE))
-        self.assertEqual(mode, MODE_IDLE)
+        self.assertEqual(mode, MODE_IDLE_NOT_CHARGING)
         mode, _ = self.decide(soc=5.1, use=self.block(*self.USE))
         self.assertEqual(mode, MODE_DISCHARGING)
 
@@ -231,36 +232,50 @@ class DecideModeTest(unittest.TestCase):
             charge_target_soc=100,
             topup_active=False,
         )
-        self.assertEqual(mode, MODE_IDLE)
+        self.assertEqual(mode, MODE_IDLE_FLOATING)
 
     def test_topup_hysteresis(self):
         # Outside both blocks: below trigger -> top up starts
         mode, active = self.decide(soc=2.0)
         self.assertEqual(mode, MODE_TOPUP)
         self.assertTrue(active)
-        # In the band [trigger, target) with no active session -> idle
+        # In the band [trigger, target) with no active session -> idle_not_charging
         mode, active = self.decide(soc=4.0)
-        self.assertEqual(mode, MODE_IDLE)
+        self.assertEqual(mode, MODE_IDLE_NOT_CHARGING)
         self.assertFalse(active)
         # Active session continues until target reached
         mode, active = self.decide(soc=4.0, topup_active=True)
         self.assertEqual(mode, MODE_TOPUP)
         self.assertTrue(active)
-        # Target reached -> idle and session cleared
+        # Target reached -> idle_not_charging and session cleared
         mode, active = self.decide(soc=5.0, topup_active=True)
-        self.assertEqual(mode, MODE_IDLE)
+        self.assertEqual(mode, MODE_IDLE_NOT_CHARGING)
         self.assertFalse(active)
 
-    def test_unknown_soc_holds_idle(self):
+    def test_fully_charged_holds_idle_floating(self):
+        # Outside both blocks, at the charge target -> idle_floating (hold 100%)
+        mode, active = self.decide(soc=100.0)
+        self.assertEqual(mode, MODE_IDLE_FLOATING)
+        self.assertFalse(active)
+        # An in-flight top-up that reaches the target also ends in idle_floating
+        mode, active = self.decide(soc=100.0, topup_active=True)
+        self.assertEqual(mode, MODE_IDLE_FLOATING)
+        self.assertFalse(active)
+        # Just below the charge target -> idle_not_charging (not "full")
+        mode, active = self.decide(soc=99.0)
+        self.assertEqual(mode, MODE_IDLE_NOT_CHARGING)
+        self.assertFalse(active)
+
+    def test_unknown_soc_holds_idle_not_charging(self):
         mode, active = self.decide(soc=None)
-        self.assertEqual(mode, MODE_IDLE)
+        self.assertEqual(mode, MODE_IDLE_NOT_CHARGING)
         self.assertFalse(active)
 
     def test_no_blocks_only_topup_logic(self):
         mode, active = self.decide(soc=1.0, use=None, charge=None)
         self.assertEqual(mode, MODE_TOPUP)
         mode, active = self.decide(soc=50.0, use=None, charge=None)
-        self.assertEqual(mode, MODE_IDLE)
+        self.assertEqual(mode, MODE_IDLE_NOT_CHARGING)
 
     def test_use_block_priority_over_charge(self):
         # A moment inside BOTH blocks: use block wins.
@@ -285,7 +300,10 @@ class SwitchesForModeTest(unittest.TestCase):
         self.assertEqual(switches_for_mode(MODE_CHARGING), (True, True))
         self.assertEqual(switches_for_mode(MODE_TOPUP), (True, True))
         self.assertEqual(switches_for_mode(MODE_DISCHARGING), (False, False))
-        self.assertEqual(switches_for_mode(MODE_IDLE), (False, True))
+        # idle_not_charging: battery rests, load on the mains.
+        self.assertEqual(switches_for_mode(MODE_IDLE_NOT_CHARGING), (False, True))
+        # idle_floating: charger holds the battery at 100%, load on the mains.
+        self.assertEqual(switches_for_mode(MODE_IDLE_FLOATING), (True, True))
 
 
 class HalfHourlyTest(unittest.TestCase):

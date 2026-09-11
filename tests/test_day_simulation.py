@@ -94,7 +94,7 @@ class DaySimulation:
             trace.append((minute, mode, round(soc, 3)))
 
             step = (
-                (CHARGE_RATE_PER_HOUR if mode in ("charging", "top_up")
+                (CHARGE_RATE_PER_HOUR if mode in ("charging", "top_up", "idle_floating")
                  else -DISCHARGE_RATE_PER_HOUR if mode == "discharging"
                  else -SELF_DISCHARGE_PER_HOUR)
                 / 12.0  # per 5 minutes
@@ -110,23 +110,23 @@ class DaySimulationTest(unittest.TestCase):
     def test_full_battery_day(self):
         trace = DaySimulation(start_soc=100.0).run()
         at = lambda m: self._at(trace, m)[1]  # noqa: E731
-        # Battery already full: charge block is a no-op, then idle, then
-        # discharge across the expensive block, then idle again.
-        self.assertEqual(at(0), "idle")
-        self.assertEqual(at(12 * 60), "idle")
+        # Battery already full: the charger holds it at 100% (idle_floating)
+        # until the expensive block, then discharge, then idle_not_charging.
+        self.assertEqual(at(0), "idle_floating")
+        self.assertEqual(at(12 * 60), "idle_floating")
         self.assertEqual(at(16 * 60), "discharging")
         self.assertEqual(at(19 * 60 + 55), "discharging")
-        self.assertEqual(at(20 * 60), "idle")
-        self.assertEqual(at(23 * 60), "idle")
+        self.assertEqual(at(20 * 60), "idle_not_charging")
+        self.assertEqual(at(23 * 60), "idle_not_charging")
 
     def test_charge_then_discharge(self):
         trace = DaySimulation(start_soc=30.0).run()
         at = lambda m: self._at(trace, m)[1]  # noqa: E731
         self.assertEqual(at(0), "charging")
         self.assertEqual(at(3 * 60 + 55), "charging")
-        self.assertEqual(at(4 * 60), "idle")  # charge block over
+        self.assertEqual(at(4 * 60), "idle_not_charging")  # charge block over
         self.assertEqual(at(16 * 60), "discharging")
-        self.assertEqual(at(20 * 60), "idle")
+        self.assertEqual(at(20 * 60), "idle_not_charging")
 
     def test_soc_trajectory_charge_then_discharge(self):
         trace = DaySimulation(start_soc=50.0).run()
@@ -150,8 +150,8 @@ class DaySimulationTest(unittest.TestCase):
         sim = DaySimulation(start_soc=2.0)
         trace = sim.run()
         # Find a moment outside both blocks (e.g. 10:00) - battery should be
-        # idle (it topped up to 5% during the 00:00-04:00 charge block).
-        self.assertEqual(self._at(trace, 10 * 60)[1], "idle")
+        # idle_not_charging (it topped up to 5% during the 00:00-04:00 charge block).
+        self.assertEqual(self._at(trace, 10 * 60)[1], "idle_not_charging")
         self.assertGreaterEqual(self._at(trace, 10 * 60)[2], 5.0)
 
 

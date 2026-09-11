@@ -28,7 +28,8 @@ the integration evaluates the current situation and picks a **mode**:
 | `charging` | ON | ON | Inside the cheapest block, while SoC < charge target |
 | `discharging` | OFF | OFF | Inside the most expensive block, while SoC > stop threshold |
 | `top_up` | ON | ON | Outside both blocks, SoC dropped below the top-up trigger |
-| `idle` | OFF | ON | Everything else (load stays on the mains, battery rests) |
+| `idle_not_charging` | OFF | ON | Battery not full: resting on the mains, awaiting its charge block (or drained after the use block) |
+| `idle_floating` | ON | ON | SoC at the charge target: charger holds the battery at 100 % until the next discharge block |
 
 ### The rules
 
@@ -38,8 +39,9 @@ the integration evaluates the current situation and picks a **mode**:
 2. **Use block** – the most expensive `use_hours` contiguous block that starts
    today. The battery discharges down to the *discharge stop* SoC (default 5 %)
    or until the block ends, whichever comes first.
-3. **Topped up** – once charged, the battery stays full (load on the mains)
-   until the use block arrives.
+3. **Holding full** – once charged, the charger stays connected (mode
+   `idle_floating`) and holds the battery at 100 % while the load stays on the
+   mains, until the use block arrives.
 4. **Maintenance top-up** – when the battery falls below the *top-up trigger*
    (default 3 %), it is topped back up to the *top-up target* (default 5 %).
    This hysteresis band prevents constant on/off cycling.
@@ -120,7 +122,7 @@ The integration exposes a set of diagnostic sensors (grouped under one device):
 
 | Sensor | Description |
 |--------|-------------|
-| **Mode** | Current mode: `idle`, `charging`, `discharging`, `top_up` (plus `dry_run`, `override_active`, `top_up_in_progress`, `last_error` attributes) |
+| **Mode** | Current mode: `idle_not_charging`, `idle_floating`, `charging`, `discharging`, `top_up` (plus `dry_run`, `override_active`, `top_up_in_progress`, `last_error` attributes) |
 | **Use block start / end** | Start & end (HH:MM) of today's most-expensive block |
 | **Use block price** | Total price (p/kWh) of the use block |
 | **Charge block start / end** | Start & end (HH:MM) of today's cheapest block |
@@ -140,7 +142,7 @@ override is cleared.
 ```yaml
 service: octopus_battery.set_mode
 data:
-  mode: discharging   # idle | charging | discharging | top_up
+  mode: discharging   # idle_not_charging | idle_floating | charging | discharging | top_up
   # entry_id: <config-entry-id>   # optional, to target one of several batteries
 ```
 
@@ -160,9 +162,9 @@ data:
 With `use_hours = 4`, `charge_hours = 4` and a typical Agile price curve:
 
 - **01:30 – 05:30** (cheapest 4 h) → `charging` (battery plug ON, load on mains)
-- **05:30 – 16:00** → `idle` (battery full, load on mains)
+- **05:30 – 16:00** → `idle_floating` (charger holds the battery at 100 %, load on mains)
 - **16:00 – 20:00** (most expensive 4 h) → `discharging` (battery plug OFF, load on battery)
-- **20:00 – 01:30** → `idle` / `top_up` if the battery has sagged below 3 %
+- **20:00 – 01:30** → `idle_not_charging` / `top_up` if the battery has sagged below 3 %
 
 ---
 

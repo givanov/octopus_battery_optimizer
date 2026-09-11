@@ -55,7 +55,7 @@
       "fields": {
         "mode": {
           "name": "Mode",
-          "description": "idle, charging, discharging or top_up"
+          "description": "idle_not_charging, idle_floating, charging, discharging or top_up"
         },
         "entry_id": {
           "name": "Entry ID",
@@ -87,7 +87,8 @@
     },
     "state": {
       "mode": {
-        "idle": "Idle",
+        "idle_not_charging": "Idle (not charging)",
+        "idle_floating": "Idle (floating)",
         "charging": "Charging",
         "discharging": "Discharging",
         "top_up": "Top up"

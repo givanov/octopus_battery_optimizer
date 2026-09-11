@@ -13,7 +13,8 @@ from typing import Optional, Sequence
 from .const import (
     MODE_CHARGING,
     MODE_DISCHARGING,
-    MODE_IDLE,
+    MODE_IDLE_FLOATING,
+    MODE_IDLE_NOT_CHARGING,
     MODE_TOPUP,
 )
 
@@ -166,34 +167,43 @@ def decide_mode(
     hysteresis state that must be persisted between calls.
 
     Priority order:
-      1. Inside the use block   -> discharge while SoC > stop threshold
-      2. Inside the charge block -> charge while SoC < charge target
-      3. Otherwise              -> maintenance top-up with hysteresis
-         (start when SoC < trigger, stop when SoC >= target)
+      1. Inside the use block    -> discharge while SoC > stop threshold,
+                                    else idle_not_charging (drained, awaiting charge)
+      2. Inside the charge block -> charge while SoC < charge target,
+                                    else idle_floating (at target, holding)
+      3. Otherwise:
+         - SoC >= charge target  -> idle_floating (hold at 100% until the next
+                                    discharge cycle)
+         - SoC >= top-up target  -> idle_not_charging (resting on the mains)
+         - active top-up session or SoC < top-up trigger -> top_up
 
-    If ``soc`` is unknown the controller holds IDLE (load stays on mains).
+    If ``soc`` is unknown the controller holds idle_not_charging (load stays on
+    mains, battery left uncharged).
     """
     if soc is None:
-        return MODE_IDLE, topup_active
+        return MODE_IDLE_NOT_CHARGING, topup_active
 
     if block_contains(use_block, now):
         if soc > discharge_stop_soc:
             return MODE_DISCHARGING, topup_active
-        return MODE_IDLE, topup_active
+        return MODE_IDLE_NOT_CHARGING, topup_active
 
     if block_contains(charge_block, now):
         if soc < charge_target_soc:
             return MODE_CHARGING, topup_active
-        return MODE_IDLE, topup_active
+        return MODE_IDLE_FLOATING, topup_active
 
-    # Outside both blocks: maintenance top-up with hysteresis band.
+    # Outside both blocks.
+    if soc >= charge_target_soc:
+        # Floating: charger holds the battery at 100% until the next discharge cycle.
+        return MODE_IDLE_FLOATING, False
     if soc >= topup_target_soc:
-        return MODE_IDLE, False
+        return MODE_IDLE_NOT_CHARGING, False
     if topup_active:
         return MODE_TOPUP, True
     if soc < topup_trigger_soc:
         return MODE_TOPUP, True
-    return MODE_IDLE, False
+    return MODE_IDLE_NOT_CHARGING, False
 
 
 def switches_for_mode(mode: str) -> tuple[bool, bool]:
@@ -207,6 +217,10 @@ def switches_for_mode(mode: str) -> tuple[bool, bool]:
         return True, True
     if mode == MODE_TOPUP:
         return True, True
+    if mode == MODE_IDLE_FLOATING:
+        # Charger stays connected (float/maintenance) so the battery holds
+        # 100% until the next discharge cycle.
+        return True, True
     if mode == MODE_DISCHARGING:
         return False, False
-    return False, True  # MODE_IDLE
+    return False, True  # MODE_IDLE_NOT_CHARGING: battery rests, load on the mains

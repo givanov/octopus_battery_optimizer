@@ -5,8 +5,10 @@ set_mode:
       selector:
         select:
           options:
-            - value: idle
-              label: Idle
+            - value: idle_not_charging
+              label: Idle (not charging)
+            - value: idle_floating
+              label: Idle (floating)
             - value: charging
               label: Charging
             - value: discharging

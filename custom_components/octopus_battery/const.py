@@ -48,12 +48,19 @@ MAX_CHECK_INTERVAL = 60
 # ---------------------------------------------------------------------------
 # Controller modes
 # ---------------------------------------------------------------------------
-MODE_IDLE = "idle"
+MODE_IDLE_NOT_CHARGING = "idle_not_charging"  # drained/used, resting, awaiting its charge block
+MODE_IDLE_FLOATING = "idle_floating"          # at charge target, floating at 100% until next discharge
 MODE_CHARGING = "charging"
 MODE_DISCHARGING = "discharging"
 MODE_TOPUP = "top_up"
 
-VALID_MODES = (MODE_IDLE, MODE_CHARGING, MODE_DISCHARGING, MODE_TOPUP)
+VALID_MODES = (
+    MODE_IDLE_NOT_CHARGING,
+    MODE_IDLE_FLOATING,
+    MODE_CHARGING,
+    MODE_DISCHARGING,
+    MODE_TOPUP,
+)
 
 # ---------------------------------------------------------------------------
 # Services
