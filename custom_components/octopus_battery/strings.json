@@ -18,6 +18,8 @@
           "topup_target_soc": "Top-up target ( % )",
           "charge_target_soc": "Charge target ( % )",
           "check_interval": "Evaluation interval (minutes)",
+          "price_source": "Price source",
+          "price_entity": "Price source entity (current day rates event entity)",
           "dry_run": "Dry run mode (compute schedule, don't touch switches)"
         },
         "data_errors": {
@@ -26,7 +28,8 @@
           "soc_sensor": "{error}",
           "charge_hours": "{error}",
           "topup_trigger_soc": "{error}",
-          "discharge_stop_soc": "{error}"
+          "discharge_stop_soc": "{error}",
+          "price_entity": "{error}"
         }
       },
       "options": {
@@ -44,6 +47,8 @@
           "topup_target_soc": "Top-up target ( % )",
           "charge_target_soc": "Charge target ( % )",
           "check_interval": "Evaluation interval (minutes)",
+          "price_source": "Price source",
+          "price_entity": "Price source entity (current day rates event entity)",
           "dry_run": "Dry run mode (compute schedule, don't touch switches)"
         }
       }
@@ -164,7 +169,9 @@
           "topup_trigger_soc": "Top-up trigger below ( % )",
           "topup_target_soc": "Top-up target ( % )",
           "charge_target_soc": "Charge target ( % )",
-          "check_interval": "Evaluation interval (minutes)"
+          "check_interval": "Evaluation interval (minutes)",
+          "price_source": "Price source",
+          "price_entity": "Price source entity (current day rates event entity)"
         },
         "data_errors": {
           "battery_switch": "{error}",
@@ -172,7 +179,8 @@
           "soc_sensor": "{error}",
           "charge_hours": "{error}",
           "topup_trigger_soc": "{error}",
-          "discharge_stop_soc": "{error}"
+          "discharge_stop_soc": "{error}",
+          "price_entity": "{error}"
         }
       }
     },

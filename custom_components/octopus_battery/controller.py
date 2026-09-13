@@ -18,6 +18,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -37,7 +38,6 @@ from .const import (
     MODE_IDLE_NOT_CHARGING,
     VALID_MODES,
 )
-from .coordinator import OctopusPriceCoordinator
 from .helpers import effective_data
 from .schedule import Block, decide_mode, select_schedule, switches_for_mode
 
@@ -53,7 +53,7 @@ class BatteryController:
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
-        coordinator: OctopusPriceCoordinator,
+        coordinator: DataUpdateCoordinator,
     ) -> None:
         self._hass = hass
         self._entry = entry

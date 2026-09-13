@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional, Sequence
+from typing import Iterable, Optional, Sequence
 
 from .const import (
     MODE_CHARGING,
@@ -147,6 +147,37 @@ def select_schedule(
 def block_contains(block: Optional[Block], moment: datetime) -> bool:
     """True if *moment* falls inside the block (start inclusive, end exclusive)."""
     return block is not None and block.start <= moment < block.end
+
+
+def combine_price_points(
+    points: Iterable[PricePoint],
+    *,
+    now: datetime,
+    max_block_hours: int,
+) -> list[PricePoint]:
+    """Merge, window and sort price points for block selection.
+
+    Points may come from several sources (e.g. the previous/current/next-day
+    rates published by the Octopus Energy integration). Points are
+    deduplicated by ``valid_from`` (later entries win, so fresher data
+    overrides stale data for the same slot), then restricted to the same
+    window the API-based coordinator uses, and returned sorted by start time.
+
+    The window spans from one hour before the start of the current calendar
+    day to ``max_block_hours + 1`` hours after the *next* day's start, so that
+    day-anchored blocks that run past midnight are fully covered. Pure - no
+    Home Assistant imports.
+    """
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    keep_from = day_start - timedelta(hours=1)
+    keep_to = day_start + timedelta(hours=24 + max_block_hours + 1)
+
+    by_start: dict[datetime, PricePoint] = {}
+    for point in points:
+        if keep_from <= point.valid_from <= keep_to:
+            by_start[point.valid_from] = point
+
+    return [by_start[key] for key in sorted(by_start)]
 
 
 def decide_mode(

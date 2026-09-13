@@ -22,6 +22,8 @@ from .const import (
     CONF_CHECK_INTERVAL,
     CONF_DISCHARGE_STOP_SOC,
     CONF_NAME,
+    CONF_PRICE_ENTITY,
+    CONF_PRICE_SOURCE,
     CONF_PRODUCT_CODE,
     CONF_DRY_RUN,
     CONF_SHELLY_SWITCH,
@@ -35,6 +37,7 @@ from .const import (
     DEFAULT_CHECK_INTERVAL,
     DEFAULT_DISCHARGE_STOP_SOC,
     DEFAULT_NAME,
+    DEFAULT_PRICE_SOURCE,
     DEFAULT_PRODUCT_CODE,
     DEFAULT_DRY_RUN,
     DEFAULT_TARIFF_CODE,
@@ -48,6 +51,8 @@ from .const import (
     MIN_CHECK_INTERVAL,
     MIN_HOURS,
     MIN_SOC,
+    PRICE_SOURCE_API,
+    PRICE_SOURCE_HOMEASSISTANT,
 )
 from .helpers import effective_data
 
@@ -55,6 +60,24 @@ _LOGGER = logging.getLogger(__name__)
 
 ENTITY_SWITCH = selector.EntitySelector({"filter": {"domain": "switch"}})
 ENTITY_SENSOR = selector.EntitySelector({"filter": {"domain": "sensor"}})
+# The "current day rates" event entity published by the octopus_energy
+# integration (only used when the price source is "homeassistant").
+EVENT_ENTITY = selector.EntitySelector({"filter": {"domain": "event"}})
+# How the electricity prices are obtained.
+PRICE_SOURCE_SELECTOR = selector.SelectSelector(
+    {
+        "options": [
+            {
+                "value": PRICE_SOURCE_API,
+                "label": "Poll the Octopus API directly",
+            },
+            {
+                "value": PRICE_SOURCE_HOMEASSISTANT,
+                "label": "Read from the Octopus Energy (Home Assistant) integration",
+            },
+        ]
+    }
+)
 
 
 def _settings_schema(defaults: dict[str, Any]) -> vol.Schema:
@@ -124,6 +147,15 @@ def _settings_schema(defaults: dict[str, Any]) -> vol.Schema:
                 vol.Coerce(int),
                 vol.Range(min=MIN_CHECK_INTERVAL, max=MAX_CHECK_INTERVAL),
             ),
+            vol.Required(
+                CONF_PRICE_SOURCE,
+                default=defaults.get(CONF_PRICE_SOURCE, DEFAULT_PRICE_SOURCE),
+            ): PRICE_SOURCE_SELECTOR,
+            # Only used when the price source is "homeassistant"; otherwise it
+            # is ignored. Left optional so API-based entries keep working.
+            vol.Optional(
+                CONF_PRICE_ENTITY, default=defaults.get(CONF_PRICE_ENTITY)
+            ): EVENT_ENTITY,
         }
     )
 
@@ -162,6 +194,16 @@ def _validate(user_input: dict[str, Any]) -> dict[str, str]:
     charge_target = user_input.get(CONF_CHARGE_TARGET_SOC, 100)
     if stop >= charge_target:
         errors[CONF_DISCHARGE_STOP_SOC] = "stop_above_charge_target"
+
+    price_source = user_input.get(CONF_PRICE_SOURCE, DEFAULT_PRICE_SOURCE)
+    if price_source == PRICE_SOURCE_HOMEASSISTANT:
+        price_entity = user_input.get(CONF_PRICE_ENTITY)
+        if (
+            not price_entity
+            or not isinstance(price_entity, str)
+            or "." not in price_entity
+        ):
+            errors[CONF_PRICE_ENTITY] = "required"
 
     return errors
 

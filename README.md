@@ -85,6 +85,8 @@ the integration evaluates the current situation and picks a **mode**:
 | **Top-up target** | `5` | % – top the battery back up to this SoC |
 | **Charge target** | `100` | % – how full to charge during the cheap block |
 | **Evaluation interval** | `5` | minutes between re-evaluations |
+| **Price source** | *Poll the Octopus API directly* | `api` (default) – this integration polls the public Octopus API, or `homeassistant` – read prices from the BottlecapDave *Octopus Energy* integration (see below) |
+| **Price source entity** | – | (only for `homeassistant`) the `event.*` “current day rates” entity from the *Octopus Energy* integration |
 
 > **Tariff code note:** the defaults target the current *Agile Octopus* tariff.
 > If your account shows a different product/tariff code (Octopus changes these
@@ -95,6 +97,27 @@ the integration evaluates the current situation and picks a **mode**:
 All of the above can be changed later via **Settings → Devices & Services →
 Octopus Battery Optimizer → ⋮ → Configure**. The **Dry run mode** is *not* an
 option – it is a live switch on the device (see below) that you toggle directly.
+
+### Price source (optional)
+
+By default this integration polls the public Octopus API for prices. If you
+already run the [BottlecapDave *Octopus Energy* Home Assistant
+integration](https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy), you
+can instead have this integration read the prices that one already publishes –
+so the API is only polled once.
+
+To use it, set **Price source** to *Read from the Octopus Energy (Home
+Assistant) integration* and point **Price source entity** at the *current day
+rates* event entity that integration creates, e.g.
+`event.octopus_energy_<serial>_<mpan>_current_day_rates`. The related *next/*
+*previous day* entities are derived automatically so blocks that run past
+midnight still have prices. Values are converted from GBP/kWh back to the same
+pence/kWh the sensors report.
+
+> The **product code** / **tariff code** options are only used by the `api`
+> source and can be left at their defaults when using the `homeassistant`
+> source. If the *Octopus Energy* integration isn't set up yet, the entry still
+> loads and prices appear as soon as its day-rates event entities exist.
 
 ---
 
@@ -188,7 +211,8 @@ custom_components/octopus_battery/
 ├── __init__.py        # entry setup, services
 ├── config_flow.py     # UI configuration + options flow
 ├── const.py           # constants, defaults, modes
-├── coordinator.py     # Octopus API price fetching (paginated)
+├── coordinator.py     # `api` price source: Octopus API fetching (paginated)
+├── homeassistant_rates.py  # `homeassistant` price source: reads the Octopus Energy integration
 ├── controller.py      # state machine driving the two switches
 ├── helpers.py         # small shared helpers
 ├── schedule.py        # pure logic: block selection + mode decision

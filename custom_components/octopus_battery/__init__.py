@@ -19,14 +19,19 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from .const import (
     ATTR_ENTRY_ID,
     ATTR_MODE,
+    CONF_PRICE_SOURCE,
+    DEFAULT_PRICE_SOURCE,
     DOMAIN,
     PLATFORMS,
+    PRICE_SOURCE_HOMEASSISTANT,
     SERVICE_CLEAR_OVERRIDE,
     SERVICE_SET_MODE,
     VALID_MODES,
 )
 from .controller import BatteryController
 from .coordinator import OctopusPriceCoordinator
+from .homeassistant_rates import HomeAssistantRatesCoordinator
+from .helpers import effective_data
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,6 +44,28 @@ SERVICE_SET_MODE_SCHEMA = vol.Schema(
 SERVICE_CLEAR_OVERRIDE_SCHEMA = vol.Schema(
     {vol.Optional(ATTR_ENTRY_ID): vol.Coerce(str)}
 )
+
+
+def _create_price_coordinator(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> OctopusPriceCoordinator | HomeAssistantRatesCoordinator:
+    """Pick the price coordinator for the configured ``price_source``.
+
+    ``homeassistant`` reads the BottlecapDave "octopus_energy" integration's
+    day-rates event entities; anything else (the default) polls the public
+    Octopus API directly, which is the original behaviour. For the
+    homeassistant source the coordinator is started immediately so it
+    subscribes to the integration's rate events before the first read.
+    """
+    data = effective_data(entry)
+    price_source = str(data.get(CONF_PRICE_SOURCE, DEFAULT_PRICE_SOURCE))
+    if price_source == PRICE_SOURCE_HOMEASSISTANT:
+        coordinator: OctopusPriceCoordinator | HomeAssistantRatesCoordinator = (
+            HomeAssistantRatesCoordinator(hass, entry)
+        )
+        coordinator.async_start()  # subscribe to rate events before first read
+        return coordinator
+    return OctopusPriceCoordinator(hass, entry)
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -67,12 +94,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         return True
 
-    coordinator = OctopusPriceCoordinator(hass, entry)
+    coordinator = _create_price_coordinator(hass, entry)
 
-    try:
-        await coordinator.async_refresh()
-    except UpdateFailed as err:
-        raise ConfigEntryNotReady(f"Cannot fetch Octopus prices: {err}") from err
+    if isinstance(coordinator, HomeAssistantRatesCoordinator):
+        # New optional source: read prices from the BottlecapDave
+        # "octopus_energy" integration instead of polling the Octopus API. The
+        # entry always loads; if the rate event entities are not available yet
+        # we log a clear warning and the prices appear (via events / the next
+        # poll) once they are. The controller reports "No price data available
+        # yet" meanwhile.
+        entry.async_on_unload(coordinator.async_stop)
+        try:
+            await coordinator.async_refresh()
+        except UpdateFailed as err:
+            _LOGGER.warning(
+                "Could not read prices from the Octopus Energy (Home Assistant) "
+                "integration yet: %s. Prices will appear once its day-rates "
+                "event entities are available.",
+                err,
+            )
+    else:
+        # Default (and original) source: poll the public Octopus API directly.
+        try:
+            await coordinator.async_refresh()
+        except UpdateFailed as err:
+            raise ConfigEntryNotReady(f"Cannot fetch Octopus prices: {err}") from err
 
     controller = BatteryController(hass, entry, coordinator)
     await controller.async_start()

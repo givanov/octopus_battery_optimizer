@@ -13,6 +13,7 @@ from __future__ import annotations
 import sys
 import types
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -102,17 +103,74 @@ def _install_ha_stubs() -> None:
     class HomeAssistant:  # minimal placeholder
         pass
     core.HomeAssistant = HomeAssistant
+    class Event:
+        def __init__(self, event_type, data=None):
+            self.event_type = event_type
+            self.data = data or {}
+    core.Event = Event
     def callback(func):  # HA's @callback marker
         return func
     core.callback = callback
+    core.ServiceCall = type("ServiceCall", (), {})
+
+    # Exceptions raised by __init__.py (ConfigEntryNotReady / services).
+    exceptions = mod("homeassistant.exceptions")
+
+    class ConfigEntryNotReady(Exception):
+        pass
+
+    class ServiceValidationError(Exception):
+        pass
+
+    exceptions.ConfigEntryNotReady = ConfigEntryNotReady
+    exceptions.ServiceValidationError = ServiceValidationError
 
     helpers = mod("homeassistant.helpers")
     event = mod("homeassistant.helpers.event")
     event.async_track_time_interval = lambda *a, **k: None
     update_coordinator = mod("homeassistant.helpers.update_coordinator")
     class DataUpdateCoordinator:
+        """Enough of the real surface for the integrations to work in tests."""
+
         def __init__(self, *a, **k):
-            pass
+            self.hass = a[0] if a else None
+            self.logger = a[1] if len(a) > 1 else k.get("logger")
+            self.name = k.get("name")
+            self.update_interval = k.get("update_interval")
+            self.config_entry = k.get("config_entry")
+            self.data = None
+            self.last_update_success = True
+            self.last_exception = None
+            self._listeners = []
+
+        async def _async_update_data(self):
+            raise NotImplementedError
+
+        async def async_set_updated_data(self, data):
+            """Mirror HA: publish externally-obtained data to listeners."""
+            self.data = data
+            self.last_update_success = True
+            self.last_exception = None
+            for listener in list(self._listeners):
+                result = listener(self)
+                if hasattr(result, "wait"):
+                    await result
+
+        async def async_refresh(self):
+            try:
+                self.data = await self._async_update_data()
+                self.last_update_success = True
+                self.last_exception = None
+                return self.data
+            except UpdateFailed as err:
+                self.last_update_success = False
+                self.last_exception = err
+                raise
+
+        def async_add_listener(self, update_listener, context=None):
+            self._listeners.append(update_listener)
+            return lambda: self._listeners.remove(update_listener)
+
         @classmethod
         def __class_getitem__(cls, item):
             return cls
@@ -170,11 +228,24 @@ def _install_ha_stubs() -> None:
 
     util = mod("homeassistant.util")
     dt = mod("homeassistant.util.dt")
-    dt.now = lambda tz=None: None
+    # A fixed, overridable "now" so windowing tests are deterministic.
+    _now_holder = {"now": datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)}
+    dt.now = lambda tz=None: _now_holder["now"]
+    dt.utcnow = lambda: _now_holder["now"]
+    dt.as_local = lambda value: value
+    dt._now_holder = _now_holder
+
+    def _parse_datetime(value):
+        if isinstance(value, datetime):
+            return value
+        return datetime.fromisoformat(value)
+
+    dt.parse_datetime = _parse_datetime
 
     ha.const = const
     ha.config_entries = entries
     ha.core = core
+    ha.exceptions = exceptions
     ha.helpers = helpers
     ha.util = util
     ha.components = components
@@ -182,6 +253,7 @@ def _install_ha_stubs() -> None:
     # selector + voluptuous stubs for config_flow.py
     selector_mod = mod("homeassistant.helpers.selector")
     selector_mod.EntitySelector = lambda config=None: config
+    selector_mod.SelectSelector = lambda config=None: config
     helpers.selector = selector_mod
 
     vol_mod = mod("voluptuous")

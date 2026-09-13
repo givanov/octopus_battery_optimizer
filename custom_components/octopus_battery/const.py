@@ -19,6 +19,12 @@ CONF_TOPUP_TARGET_SOC = "topup_target_soc"
 CONF_CHARGE_TARGET_SOC = "charge_target_soc"
 CONF_CHECK_INTERVAL = "check_interval"
 CONF_DRY_RUN = "dry_run"
+# Where the electricity prices come from (see PRICE_SOURCE_*).
+CONF_PRICE_SOURCE = "price_source"
+# The "current day rates" event entity from the BottlecapDave "octopus_energy"
+# integration (e.g. ``event.octopus_energy_<serial>_<mpan>_current_day_rates``).
+# Only used when ``price_source`` is ``homeassistant``.
+CONF_PRICE_ENTITY = "price_entity"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -44,6 +50,34 @@ MIN_SOC = 0
 MAX_SOC = 100
 MIN_CHECK_INTERVAL = 1
 MAX_CHECK_INTERVAL = 60
+
+# ---------------------------------------------------------------------------
+# Price source
+# ---------------------------------------------------------------------------
+# "api" polls the public Octopus API (the original behaviour). "homeassistant"
+# reads the prices published by the BottlecapDave "octopus_energy" Home
+# Assistant integration instead, so no direct API polling is needed here.
+PRICE_SOURCE_API = "api"
+PRICE_SOURCE_HOMEASSISTANT = "homeassistant"
+VALID_PRICE_SOURCES = (PRICE_SOURCE_API, PRICE_SOURCE_HOMEASSISTANT)
+# Default price source: poll the Octopus API directly (the original behaviour).
+DEFAULT_PRICE_SOURCE = PRICE_SOURCE_API
+
+# Event types fired by the "octopus_energy" integration when a day's
+# electricity rates are (re)published. Kept in sync with the source
+# integration's ``const.py``.
+EVENT_ELECTRICITY_CURRENT_DAY_RATES = "octopus_energy_electricity_current_day_rates"
+EVENT_ELECTRICITY_NEXT_DAY_RATES = "octopus_energy_electricity_next_day_rates"
+EVENT_ELECTRICITY_PREVIOUS_DAY_RATES = "octopus_energy_electricity_previous_day_rates"
+EVENT_ELECTRICITY_DAY_RATES = (
+    EVENT_ELECTRICITY_CURRENT_DAY_RATES,
+    EVENT_ELECTRICITY_NEXT_DAY_RATES,
+    EVENT_ELECTRICITY_PREVIOUS_DAY_RATES,
+)
+# How often to re-read the rate event entities as a fallback (the events are the
+# primary, immediate mechanism). 30 min comfortably tracks the source's ~15 min
+# rate refresh while keeping load minimal.
+RATE_POLL_MINUTES = 30
 
 # ---------------------------------------------------------------------------
 # Controller modes
