@@ -5,8 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.components.sensor import SensorStateClass
-from homeassistant.const import PERCENTAGE, EntityCategory
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
@@ -149,19 +148,52 @@ class BlockPriceSensor(BaseBatterySensor):
         return round(block.total, 2)
 
 
-class SocSensor(BaseBatterySensor):
-    """Mirror of the battery state-of-charge sensor."""
+# Battery level state thresholds, as a percentage of state-of-charge.
+SOC_CRITICAL_BELOW = 10.0  # strictly below this -> "critical"
+SOC_LOW_BELOW = 20.0  # below this (and not critical) -> "low"
+SOC_FULL_AT = 100.0  # at this -> "fully_charged"
 
-    _attr_native_unit_of_measurement = PERCENTAGE
-    _attr_state_class = SensorStateClass.MEASUREMENT
+BATTERY_STATE_CRITICAL = "critical"
+BATTERY_STATE_LOW = "low"
+BATTERY_STATE_OK = "ok"
+BATTERY_STATE_FULLY_CHARGED = "fully_charged"
+
+
+def battery_level_state(soc: Optional[float]) -> Optional[str]:
+    """Map a battery state-of-charge (%) to a human-readable level state.
+
+    * ``critical``       strictly below 10 %
+    * ``low``            10 % (inclusive) up to 20 %
+    * ``fully_charged``  at 100 %
+    * ``ok``             20 % (inclusive) up to (but not at) 100 %
+    * ``None``           when the SoC is unknown
+    """
+    if soc is None:
+        return None
+    if soc < SOC_CRITICAL_BELOW:
+        return BATTERY_STATE_CRITICAL
+    if soc < SOC_LOW_BELOW:
+        return BATTERY_STATE_LOW
+    if soc >= SOC_FULL_AT:
+        return BATTERY_STATE_FULLY_CHARGED
+    return BATTERY_STATE_OK
+
+
+class BatteryLevelSensor(BaseBatterySensor):
+    """Battery level as a state: critical / low / ok / fully_charged."""
 
     def __init__(self, entry: ConfigEntry, controller: BatteryController) -> None:
-        super().__init__(entry, controller, "battery_soc", "Battery level")
+        super().__init__(entry, controller, "battery_level", "Battery level")
 
     @property
-    def state(self) -> Optional[float]:
+    def state(self) -> Optional[str]:
+        return battery_level_state(self._controller.soc)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        # Keep the exact SoC (%) available as an attribute for dashboards.
         soc = self._controller.soc
-        return None if soc is None else round(soc, 1)
+        return {"soc": None if soc is None else round(soc, 1)}
 
 
 async def async_setup_entry(
@@ -198,6 +230,6 @@ async def async_setup_entry(
                 entry, controller, "charge_block_price", "Charge block price",
                 "charge_block",
             ),
-            SocSensor(entry, controller),
+            BatteryLevelSensor(entry, controller),
         ]
     )

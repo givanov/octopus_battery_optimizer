@@ -96,7 +96,7 @@
       "charge_block_start": "Charge block start",
       "charge_block_end": "Charge block end",
       "charge_block_price": "Charge block price",
-      "battery_soc": "Battery level"
+      "battery_level": "Battery level"
     },
     "state": {
       "mode": {
@@ -105,6 +105,12 @@
         "charging": "Charging",
         "discharging": "Discharging",
         "top_up": "Top up"
+      },
+      "battery_level": {
+        "critical": "Critical",
+        "low": "Low",
+        "ok": "OK",
+        "fully_charged": "Fully charged"
       }
     }
   },
@@ -138,7 +144,7 @@
           "charge_block_price": {
             "name": "Charge block price"
           },
-          "battery_soc": {
+          "battery_level": {
             "name": "Battery level"
           }
         }

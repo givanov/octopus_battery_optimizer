@@ -150,7 +150,7 @@ The integration exposes a set of diagnostic sensors (grouped under one device):
 | **Use block price** | Total price (p/kWh) of the use block |
 | **Charge block start / end** | Start & end (HH:MM) of today's cheapest block |
 | **Charge block price** | Total price (p/kWh) of the charge block |
-| **Battery level** | Mirror of the SoC sensor (%) |
+| **Battery level** | State derived from the SoC sensor: `critical` (< 10 %), `low` (10–<20 %), `ok` (≥ 20 %), `fully_charged` (at 100 %), plus a `soc` attribute with the exact % |
 
 There is also a **Dry run mode** switch on the same device (see above).
 

@@ -411,6 +411,69 @@ class TestSwitchState(unittest.TestCase):
         self.assertEqual(sw.state, "on")
 
 
+class TestBatteryLevel(unittest.TestCase):
+    """The battery level sensor must report a state, not a numeric SoC."""
+
+    def _make_sensor(self, soc) -> object:
+        from octopus_battery.sensor import BatteryLevelSensor
+
+        controller = MagicMock()
+        controller.soc = soc
+        controller.add_listener = MagicMock()
+        controller.remove_listener = MagicMock()
+        entry = MagicMock()
+        entry.entry_id = "test-entry"
+        entry.title = "Test"
+        return BatteryLevelSensor(entry, controller)
+
+    @staticmethod
+    def _state(soc) -> object:
+        from octopus_battery.sensor import battery_level_state
+
+        return battery_level_state(soc)
+
+    # --- pure mapping function --------------------------------------
+    def test_unknown_when_soc_missing(self) -> None:
+        self.assertIsNone(self._state(None))
+
+    def test_critical_below_10(self) -> None:
+        self.assertEqual(self._state(0), "critical")
+        self.assertEqual(self._state(5), "critical")
+        self.assertEqual(self._state(9.9), "critical")
+
+    def test_low_from_10_below_20(self) -> None:
+        self.assertEqual(self._state(10), "low")
+        self.assertEqual(self._state(15), "low")
+        self.assertEqual(self._state(19.9), "low")
+
+    def test_ok_from_20_below_100(self) -> None:
+        self.assertEqual(self._state(20), "ok")
+        self.assertEqual(self._state(50), "ok")
+        self.assertEqual(self._state(99.9), "ok")
+
+    def test_fully_charged_at_100(self) -> None:
+        self.assertEqual(self._state(100), "fully_charged")
+
+    # --- sensor state tracks the controller -------------------------
+    def test_sensor_state_tracks_controller(self) -> None:
+        sensor = self._make_sensor(42)
+        self.assertEqual(sensor.state, "ok")
+        sensor._controller.soc = 5
+        self.assertEqual(sensor.state, "critical")
+        sensor._controller.soc = 15
+        self.assertEqual(sensor.state, "low")
+        sensor._controller.soc = 100
+        self.assertEqual(sensor.state, "fully_charged")
+        sensor._controller.soc = None
+        self.assertIsNone(sensor.state)
+
+    def test_sensor_exposes_soc_attribute(self) -> None:
+        sensor = self._make_sensor(42.66)
+        self.assertEqual(sensor.extra_state_attributes["soc"], 42.7)
+        sensor._controller.soc = None
+        self.assertIsNone(sensor.extra_state_attributes["soc"])
+
+
 class TestEntityRemoval(unittest.TestCase):
     """async_will_remove_from_hass must be awaitable.
 
