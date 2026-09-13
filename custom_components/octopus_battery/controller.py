@@ -33,6 +33,7 @@ from .const import (
     CONF_USE_HOURS,
     CONF_DRY_RUN,
     DEFAULT_CHECK_INTERVAL,
+    DOMAIN,
     MODE_IDLE_NOT_CHARGING,
     VALID_MODES,
 )
@@ -142,13 +143,17 @@ class BatteryController:
     async def _async_tick(self, _now: object) -> None:
         await self.async_evaluate()
 
-    async def _on_prices_updated(self) -> None:
+    def _on_prices_updated(self) -> None:
         """Re-evaluate immediately when new prices arrive.
 
-        Home Assistant invokes coordinator listeners with no arguments
-        (``update_callback()``), so this takes none.
+        Home Assistant invokes coordinator listeners synchronously
+        (``update_callback()``), so this must be a plain function -
+        an ``async def`` callback would create a coroutine that is
+        never awaited. Schedule the async evaluation as a task instead.
         """
-        await self.async_evaluate()
+        self._hass.async_create_task(
+            self.async_evaluate(), name=f"{DOMAIN}-re-evaluate"
+        )
 
     def _read_soc(self) -> Optional[float]:
         state = self._hass.states.get(self._data[CONF_SOC_SENSOR])
