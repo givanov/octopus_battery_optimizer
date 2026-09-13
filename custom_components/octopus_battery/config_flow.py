@@ -6,7 +6,13 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+    OptionsFlowWithConfigEntry,
+)
 from homeassistant.helpers import selector
 
 from .const import (
@@ -43,49 +49,86 @@ from .const import (
     MIN_HOURS,
     MIN_SOC,
 )
+from .helpers import effective_data
 
 _LOGGER = logging.getLogger(__name__)
 
 ENTITY_SWITCH = selector.EntitySelector({"filter": {"domain": "switch"}})
 ENTITY_SENSOR = selector.EntitySelector({"filter": {"domain": "sensor"}})
 
-BASE_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_BATTERY_SWITCH, default=None): ENTITY_SWITCH,
-        vol.Required(CONF_SHELLY_SWITCH, default=None): ENTITY_SWITCH,
-        vol.Required(CONF_SOC_SENSOR, default=None): ENTITY_SENSOR,
-        vol.Required(
-            CONF_USE_HOURS, default=DEFAULT_USE_HOURS
-        ): vol.All(vol.Coerce(int), vol.Range(min=MIN_HOURS, max=MAX_HOURS)),
-        vol.Required(
-            CONF_CHARGE_HOURS, default=DEFAULT_CHARGE_HOURS
-        ): vol.All(vol.Coerce(int), vol.Range(min=MIN_HOURS, max=MAX_HOURS)),
-        vol.Required(
-            CONF_PRODUCT_CODE, default=DEFAULT_PRODUCT_CODE
-        ): vol.All(str, vol.Length(min=1, max=32)),
-        vol.Required(
-            CONF_TARIFF_CODE, default=DEFAULT_TARIFF_CODE
-        ): vol.All(str, vol.Length(min=1, max=64)),
-        vol.Required(
-            CONF_DISCHARGE_STOP_SOC, default=DEFAULT_DISCHARGE_STOP_SOC
-        ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SOC, max=MAX_SOC)),
-        vol.Required(
-            CONF_TOPUP_TRIGGER_SOC, default=DEFAULT_TOPUP_TRIGGER_SOC
-        ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SOC, max=MAX_SOC)),
-        vol.Required(
-            CONF_TOPUP_TARGET_SOC, default=DEFAULT_TOPUP_TARGET_SOC
-        ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SOC, max=MAX_SOC)),
-        vol.Required(
-            CONF_CHARGE_TARGET_SOC, default=DEFAULT_CHARGE_TARGET_SOC
-        ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SOC, max=MAX_SOC)),
-        vol.Required(
-            CONF_CHECK_INTERVAL, default=DEFAULT_CHECK_INTERVAL
-        ): vol.All(
-            vol.Coerce(int),
-            vol.Range(min=MIN_CHECK_INTERVAL, max=MAX_CHECK_INTERVAL),
-        ),
-    }
-)
+
+def _settings_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Build the settings form schema with per-field defaults.
+
+    Shared by the user step (factory defaults) and the options step
+    (the entry's current values), so both flows always offer exactly
+    the same settings.
+    """
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_BATTERY_SWITCH, default=defaults.get(CONF_BATTERY_SWITCH)
+            ): ENTITY_SWITCH,
+            vol.Required(
+                CONF_SHELLY_SWITCH, default=defaults.get(CONF_SHELLY_SWITCH)
+            ): ENTITY_SWITCH,
+            vol.Required(
+                CONF_SOC_SENSOR, default=defaults.get(CONF_SOC_SENSOR)
+            ): ENTITY_SENSOR,
+            vol.Required(
+                CONF_USE_HOURS,
+                default=defaults.get(CONF_USE_HOURS, DEFAULT_USE_HOURS),
+            ): vol.All(vol.Coerce(int), vol.Range(min=MIN_HOURS, max=MAX_HOURS)),
+            vol.Required(
+                CONF_CHARGE_HOURS,
+                default=defaults.get(CONF_CHARGE_HOURS, DEFAULT_CHARGE_HOURS),
+            ): vol.All(vol.Coerce(int), vol.Range(min=MIN_HOURS, max=MAX_HOURS)),
+            vol.Required(
+                CONF_PRODUCT_CODE,
+                default=defaults.get(CONF_PRODUCT_CODE, DEFAULT_PRODUCT_CODE),
+            ): vol.All(str, vol.Length(min=1, max=32)),
+            vol.Required(
+                CONF_TARIFF_CODE,
+                default=defaults.get(CONF_TARIFF_CODE, DEFAULT_TARIFF_CODE),
+            ): vol.All(str, vol.Length(min=1, max=64)),
+            vol.Required(
+                CONF_DISCHARGE_STOP_SOC,
+                default=defaults.get(
+                    CONF_DISCHARGE_STOP_SOC, DEFAULT_DISCHARGE_STOP_SOC
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SOC, max=MAX_SOC)),
+            vol.Required(
+                CONF_TOPUP_TRIGGER_SOC,
+                default=defaults.get(
+                    CONF_TOPUP_TRIGGER_SOC, DEFAULT_TOPUP_TRIGGER_SOC
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SOC, max=MAX_SOC)),
+            vol.Required(
+                CONF_TOPUP_TARGET_SOC,
+                default=defaults.get(
+                    CONF_TOPUP_TARGET_SOC, DEFAULT_TOPUP_TARGET_SOC
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SOC, max=MAX_SOC)),
+            vol.Required(
+                CONF_CHARGE_TARGET_SOC,
+                default=defaults.get(
+                    CONF_CHARGE_TARGET_SOC, DEFAULT_CHARGE_TARGET_SOC
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SOC, max=MAX_SOC)),
+            vol.Required(
+                CONF_CHECK_INTERVAL,
+                default=defaults.get(
+                    CONF_CHECK_INTERVAL, DEFAULT_CHECK_INTERVAL
+                ),
+            ): vol.All(
+                vol.Coerce(int),
+                vol.Range(min=MIN_CHECK_INTERVAL, max=MAX_CHECK_INTERVAL),
+            ),
+        }
+    )
+
+
+BASE_SCHEMA = _settings_schema({})
 
 
 def _validate(user_input: dict[str, Any]) -> dict[str, str]:
@@ -174,10 +217,29 @@ class OctopusBatteryConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_options(
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Return the options flow for reconfiguring this entry.
+
+        This is what powers the "Configure" action in
+        Settings → Devices & Services → Octopus Battery Optimizer.
+        """
+        return OctopusBatteryOptionsFlow(config_entry)
+
+
+class OctopusBatteryOptionsFlow(OptionsFlowWithConfigEntry):
+    """Reconfigure an existing entry after initial setup.
+
+    Saved values are written to ``entry.options``; Home Assistant then
+    fires the entry's update listener (``_async_update_entry`` in
+    ``__init__.py``), which reloads the entry so the coordinator and
+    controller pick up the new settings.
+    """
+
+    async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the options step (mirrors the user step without name)."""
+        """Edit the settings of an already-configured entry."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -185,8 +247,11 @@ class OctopusBatteryConfigFlow(ConfigFlow, domain=DOMAIN):
             if not errors:
                 return self.async_create_entry(title="", data=user_input)
 
+        # Pre-fill with the currently effective values (entry.data merged
+        # with any previously saved options) so the form shows what the
+        # integration uses right now.
         return self.async_show_form(
-            step_id="options",
-            data_schema=BASE_SCHEMA,
+            step_id="init",
+            data_schema=_settings_schema(effective_data(self.config_entry)),
             errors=errors,
         )

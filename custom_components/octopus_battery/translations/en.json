@@ -19,6 +19,14 @@
           "charge_target_soc": "Charge target ( % )",
           "check_interval": "Evaluation interval (minutes)",
           "dry_run": "Dry run mode (compute schedule, don't touch switches)"
+        },
+        "data_errors": {
+          "battery_switch": "{error}",
+          "shelly_switch": "{error}",
+          "soc_sensor": "{error}",
+          "charge_hours": "{error}",
+          "topup_trigger_soc": "{error}",
+          "discharge_stop_soc": "{error}"
         }
       },
       "options": {
@@ -137,6 +145,43 @@
           }
         }
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Reconfigure Octopus Battery Optimizer",
+        "description": "Change the settings of this battery. Changes are applied immediately (the entry is reloaded).",
+        "data": {
+          "battery_switch": "Battery charging switch (smart plug)",
+          "shelly_switch": "Shelly contactor switch (ON = mains, OFF = battery)",
+          "soc_sensor": "Battery state-of-charge sensor (0-100 %)",
+          "use_hours": "Discharge block length (hours)",
+          "charge_hours": "Charge block length (hours)",
+          "product_code": "Octopus product code",
+          "tariff_code": "Octopus tariff code",
+          "discharge_stop_soc": "Stop discharging below ( % )",
+          "topup_trigger_soc": "Top-up trigger below ( % )",
+          "topup_target_soc": "Top-up target ( % )",
+          "charge_target_soc": "Charge target ( % )",
+          "check_interval": "Evaluation interval (minutes)"
+        },
+        "data_errors": {
+          "battery_switch": "{error}",
+          "shelly_switch": "{error}",
+          "soc_sensor": "{error}",
+          "charge_hours": "{error}",
+          "topup_trigger_soc": "{error}",
+          "discharge_stop_soc": "{error}"
+        }
+      }
+    },
+    "error": {
+      "required": "Please select an entity",
+      "same_as_battery": "Must be a different switch from the battery switch",
+      "blocks_overlap": "Discharge + charge hours must be 24 or less",
+      "trigger_above_target": "Top-up trigger must be lower than the top-up target",
+      "stop_above_charge_target": "Discharge stop must be lower than the charge target"
     }
   }
 }

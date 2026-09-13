@@ -21,11 +21,11 @@ PKG_DIR = ROOT / "custom_components" / "octopus_battery"
 
 
 def _install_ha_stubs() -> None:
-    """Inject minimal homeassistant.* stubs so controller.py can import."""
-    if "homeassistant" in sys.modules:
-        return
+    """Inject minimal homeassistant.* stubs so the modules can import."""
 
     def mod(name: str) -> types.ModuleType:
+        if name in sys.modules:
+            return sys.modules[name]
         m = types.ModuleType(name)
         sys.modules[name] = m
         return m
@@ -48,6 +48,55 @@ def _install_ha_stubs() -> None:
     class ConfigEntry:  # minimal placeholder for the type hint
         pass
     entries.ConfigEntry = ConfigEntry
+
+    # Config-flow machinery: just enough surface for config_flow.py to
+    # import and for flow steps to be driven directly in tests.
+    if not hasattr(entries, "ConfigFlow"):
+        entries.ConfigFlowResult = dict
+
+        class _FlowBase:
+            def __init_subclass__(cls, *, domain=None, **kwargs) -> None:
+                """Accept the ``domain=`` class kwarg like HA's ConfigFlow."""
+                if domain is not None:
+                    cls.domain = domain
+                super().__init_subclass__(**kwargs)
+
+            def __init__(self) -> None:
+                self.hass = None
+                self.handler = None
+                self.unique_id = None
+
+            def async_show_form(self, **kwargs):
+                return {"type": "form", **kwargs}
+
+            def async_create_entry(self, **kwargs):
+                return {"type": "create_entry", **kwargs}
+
+            async def async_set_unique_id(self, unique_id):
+                self.unique_id = unique_id
+
+            def _abort_if_unique_id_configured(self):
+                pass
+
+        entries.ConfigFlow = _FlowBase
+        entries.OptionsFlow = _FlowBase
+
+        class _OptionsFlowWithConfigEntry(_FlowBase):
+            """Mirror of HA's OptionsFlowWithConfigEntry (entry via ctor)."""
+
+            def __init__(self, config_entry=None) -> None:
+                super().__init__()
+                self._config_entry = config_entry
+
+            @property
+            def config_entry(self):
+                return self._config_entry
+
+            @config_entry.setter
+            def config_entry(self, value):
+                self._config_entry = value
+
+        entries.OptionsFlowWithConfigEntry = _OptionsFlowWithConfigEntry
 
     core = mod("homeassistant.core")
     class HomeAssistant:  # minimal placeholder
@@ -129,6 +178,47 @@ def _install_ha_stubs() -> None:
     ha.helpers = helpers
     ha.util = util
     ha.components = components
+
+    # selector + voluptuous stubs for config_flow.py
+    selector_mod = mod("homeassistant.helpers.selector")
+    selector_mod.EntitySelector = lambda config=None: config
+    helpers.selector = selector_mod
+
+    vol_mod = mod("voluptuous")
+
+    class _Validator:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __call__(self, value):
+            return value
+
+    class _Key:
+        def __init__(self, key, default=...):
+            self.key = key
+            self.default = default
+
+        def __hash__(self):
+            return hash(self.key)
+
+        def __eq__(self, other):
+            return self.key == getattr(other, "key", other)
+
+    class _Schema:
+        def __init__(self, schema):
+            self.schema = schema
+
+        def __call__(self, data):
+            return data
+
+    vol_mod.Schema = _Schema
+    vol_mod.Required = lambda key, msg=None, default=...: _Key(key, default)
+    vol_mod.Optional = lambda key, msg=None, default=...: _Key(key, default)
+    vol_mod.Coerce = lambda type_: _Validator()
+    vol_mod.Range = lambda **kwargs: _Validator()
+    vol_mod.All = lambda *validators: _Validator()
+    vol_mod.Length = lambda **kwargs: _Validator()
+    vol_mod.In = lambda allowed: _Validator()
 
     # coordinator.py imports aiohttp at module level
     aiohttp = mod("aiohttp")
