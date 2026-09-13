@@ -22,6 +22,7 @@ from .const import (
     CONF_PRICE_SOURCE,
     DEFAULT_PRICE_SOURCE,
     DOMAIN,
+    OCTOPUS_ENERGY_DOMAIN,
     PLATFORMS,
     PRICE_SOURCE_HOMEASSISTANT,
     SERVICE_CLEAR_OVERRIDE,
@@ -56,10 +57,20 @@ def _create_price_coordinator(
     Octopus API directly, which is the original behaviour. For the
     homeassistant source the coordinator is started immediately so it
     subscribes to the integration's rate events before the first read.
+
+    Before fetching prices from that integration we wait for it to be loaded:
+    if its config entry is not set up yet we raise ``ConfigEntryNotReady`` so
+    Home Assistant retries this entry later (it keeps backing off until the
+    ``octopus_energy`` integration is loaded, then proceeds).
     """
     data = effective_data(entry)
     price_source = str(data.get(CONF_PRICE_SOURCE, DEFAULT_PRICE_SOURCE))
     if price_source == PRICE_SOURCE_HOMEASSISTANT:
+        if not hass.config_entries.async_loaded_entries(OCTOPUS_ENERGY_DOMAIN):
+            raise ConfigEntryNotReady(
+                f"{OCTOPUS_ENERGY_DOMAIN} integration is not loaded yet; "
+                "waiting for it before fetching prices"
+            )
         coordinator: OctopusPriceCoordinator | HomeAssistantRatesCoordinator = (
             HomeAssistantRatesCoordinator(hass, entry)
         )
@@ -98,11 +109,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if isinstance(coordinator, HomeAssistantRatesCoordinator):
         # New optional source: read prices from the BottlecapDave
-        # "octopus_energy" integration instead of polling the Octopus API. The
-        # entry always loads; if the rate event entities are not available yet
-        # we log a clear warning and the prices appear (via events / the next
-        # poll) once they are. The controller reports "No price data available
-        # yet" meanwhile.
+        # "octopus_energy" integration instead of polling the Octopus API. We
+        # only reach here once that integration is loaded (otherwise
+        # _create_price_coordinator raised ConfigEntryNotReady and HA retries
+        # the entry). Even so its day-rates event entities may not exist yet:
+        # in that case we log a clear warning and the prices appear (via
+        # events / the next poll) once they do. The controller reports "No
+        # price data available yet" meanwhile.
         entry.async_on_unload(coordinator.async_stop)
         try:
             await coordinator.async_refresh()

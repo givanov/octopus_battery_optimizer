@@ -116,8 +116,11 @@ pence/kWh the sensors report.
 
 > The **product code** / **tariff code** options are only used by the `api`
 > source and can be left at their defaults when using the `homeassistant`
-> source. If the *Octopus Energy* integration isn't set up yet, the entry still
-> loads and prices appear as soon as its day-rates event entities exist.
+> source. If the *Octopus Energy* integration isn't set up yet, the entry
+> **waits for it to load** before fetching its prices (Home Assistant retries
+> the entry until the integration is available). Once it's loaded, the entry
+> loads even if its day-rates event entities haven't appeared yet, and prices
+> show up as soon as they exist.
 
 ---
 

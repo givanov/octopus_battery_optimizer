@@ -26,6 +26,7 @@ from pathlib import Path
 import test_dry_run  # noqa: F401  (installs the HA stubs + package path)
 
 from homeassistant.core import Event
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -41,6 +42,7 @@ from octopus_battery.const import (
     EVENT_ELECTRICITY_DAY_RATES,
     EVENT_ELECTRICITY_NEXT_DAY_RATES,
     EVENT_ELECTRICITY_PREVIOUS_DAY_RATES,
+    OCTOPUS_ENERGY_DOMAIN,
     PRICE_SOURCE_API,
     PRICE_SOURCE_HOMEASSISTANT,
 )
@@ -74,11 +76,24 @@ class _FakeBus:
         ) if handler in self.handlers.get(event_type, []) else None
 
 
+class _FakeConfigEntries:
+    """Mimics ``hass.config_entries`` for the loaded-domain check."""
+
+    def __init__(self, octopus_energy_loaded: bool = True) -> None:
+        self._loaded = {"test-entry"} if octopus_energy_loaded else set()
+
+    def async_loaded_entries(self, domain: str) -> set:
+        if domain == OCTOPUS_ENERGY_DOMAIN:
+            return self._loaded
+        return set()
+
+
 class _FakeHass:
-    def __init__(self) -> None:
+    def __init__(self, octopus_energy_loaded: bool = True) -> None:
         self.states: dict = {}
         self.bus = _FakeBus()
         self.tasks: list = []
+        self.config_entries = _FakeConfigEntries(octopus_energy_loaded)
 
     def async_create_task(self, coro, name=None) -> None:
         self.tasks.append((name, coro))
@@ -445,6 +460,49 @@ class CoordinatorSelectionTests(unittest.TestCase):
         self.assertIsInstance(coord, HomeAssistantRatesCoordinator)
         # Started immediately so it subscribes to rate events.
         self.assertIsNotNone(coord._unsub_events)
+
+    def test_waits_for_octopus_energy_when_not_loaded(self) -> None:
+        # If the octopus_energy integration is not loaded yet, setup must be
+        # deferred (ConfigEntryNotReady) so Home Assistant retries until it is.
+        init_mod = _load_init_module()
+        hass = _FakeHass(octopus_energy_loaded=False)
+        entry = _FakeEntry(
+            {
+                CONF_PRICE_SOURCE: PRICE_SOURCE_HOMEASSISTANT,
+                CONF_PRICE_ENTITY: "event.octopus_energy_123_ABC_current_day_rates",
+            }
+        )
+        with self.assertRaises(ConfigEntryNotReady):
+            init_mod._create_price_coordinator(hass, entry)
+
+    def test_homeassistant_proceeds_when_octopus_energy_loaded(self) -> None:
+        # When the integration is loaded, the coordinator is created normally.
+        init_mod = _load_init_module()
+        hass = _FakeHass(octopus_energy_loaded=True)
+        entry = _FakeEntry(
+            {
+                CONF_PRICE_SOURCE: PRICE_SOURCE_HOMEASSISTANT,
+                CONF_PRICE_ENTITY: "event.octopus_energy_123_ABC_current_day_rates",
+            }
+        )
+        self.assertIsInstance(
+            init_mod._create_price_coordinator(hass, entry),
+            HomeAssistantRatesCoordinator,
+        )
+
+    def test_api_source_does_not_wait_for_octopus_energy(self) -> None:
+        # The api source never depends on the octopus_energy integration.
+        init_mod = _load_init_module()
+        hass = _FakeHass(octopus_energy_loaded=False)
+        entry = _FakeEntry(
+            {
+                CONF_PRODUCT_CODE: "AGILE-24-10-01",
+                CONF_TARIFF_CODE: "E-1R-AGILE-24-10-01-A",
+                CONF_PRICE_SOURCE: PRICE_SOURCE_API,
+            }
+        )
+        coord = init_mod._create_price_coordinator(hass, entry)
+        self.assertIsInstance(coord, OctopusPriceCoordinator)
 
     def test_selects_api_coordinator_by_default(self) -> None:
         init_mod = _load_init_module()

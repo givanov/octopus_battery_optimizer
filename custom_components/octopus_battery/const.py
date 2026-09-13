@@ -63,6 +63,11 @@ VALID_PRICE_SOURCES = (PRICE_SOURCE_API, PRICE_SOURCE_HOMEASSISTANT)
 # Default price source: poll the Octopus API directly (the original behaviour).
 DEFAULT_PRICE_SOURCE = PRICE_SOURCE_API
 
+# The BottlecapDave "Octopus Energy" integration's domain. When the price
+# source is ``homeassistant`` we wait for this integration to be loaded before
+# fetching its published prices.
+OCTOPUS_ENERGY_DOMAIN = "octopus_energy"
+
 # Event types fired by the "octopus_energy" integration when a day's
 # electricity rates are (re)published. Kept in sync with the source
 # integration's ``const.py``.

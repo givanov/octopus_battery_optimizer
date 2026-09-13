@@ -21,6 +21,18 @@ ROOT = Path(__file__).resolve().parent.parent
 PKG_DIR = ROOT / "custom_components" / "octopus_battery"
 
 
+# Exception stubs, defined at module level so their identity is stable no
+# matter how many times _install_ha_stubs() runs (other test modules re-run
+# it). Re-creating the classes on each call would break `assertRaises` identity
+# checks between a raised exception and a test's `from ... import ...`.
+class ConfigEntryNotReady(Exception):
+    pass
+
+
+class ServiceValidationError(Exception):
+    pass
+
+
 def _install_ha_stubs() -> None:
     """Inject minimal homeassistant.* stubs so the modules can import."""
 
@@ -113,15 +125,10 @@ def _install_ha_stubs() -> None:
     core.callback = callback
     core.ServiceCall = type("ServiceCall", (), {})
 
-    # Exceptions raised by __init__.py (ConfigEntryNotReady / services).
+    # Exceptions raised by __init__.py (ConfigEntryNotReady / services). The
+    # classes are module-level (see top of file) so their identity survives
+    # repeated calls to _install_ha_stubs.
     exceptions = mod("homeassistant.exceptions")
-
-    class ConfigEntryNotReady(Exception):
-        pass
-
-    class ServiceValidationError(Exception):
-        pass
-
     exceptions.ConfigEntryNotReady = ConfigEntryNotReady
     exceptions.ServiceValidationError = ServiceValidationError
 
