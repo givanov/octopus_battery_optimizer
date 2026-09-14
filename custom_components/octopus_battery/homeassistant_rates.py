@@ -31,6 +31,7 @@ so the controller is unchanged.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
@@ -145,11 +146,31 @@ class HomeAssistantRatesCoordinator(DataUpdateCoordinator[list[PricePoint]]):
     # Event handling
     # ------------------------------------------------------------------
     def _handle_rate_event(self, event: Event) -> None:
-        """Merge a rate event into the cache and re-publish.
+        """Entry point for rate events (may be invoked from any thread).
 
-        Runs synchronously on the event bus, so the async re-publish is
-        scheduled as a task (mirroring how the controller re-evaluates on
-        price updates).
+        The ``octopus_energy`` integration can fire its rate events from a
+        worker thread (its rate refresh runs off the event loop), so this
+        listener may be called from a thread other than the event loop. The
+        cache merge and ``hass.async_create_task`` must happen on the loop,
+        so hop to it first (a direct call when the event was fired on the
+        loop).
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # Invoked from a worker thread: hop to the event loop.
+            loop = self.hass.loop
+            if loop is None or loop.is_closed():
+                return
+            loop.call_soon_threadsafe(self._process_rate_event, event)
+        else:
+            self._process_rate_event(event)
+
+    def _process_rate_event(self, event: Event) -> None:
+        """Merge a rate event into the cache and re-publish (event loop only).
+
+        The async re-publish is scheduled as a task (mirroring how the
+        controller re-evaluates on price updates).
         """
         data = event.data
         if not data or not isinstance(data.get("rates"), list):
