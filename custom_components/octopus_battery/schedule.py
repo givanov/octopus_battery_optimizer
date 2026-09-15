@@ -125,26 +125,30 @@ def select_schedule(
     midnight. The next day's blocks only become active once that day starts.
 
     *prices* must be sorted by start time (see ``combine_price_points``).
-    If the points do not extend to the end of the anchored day (a stale or
-    truncated price curve - e.g. a pre-midnight window evaluated just after
-    the day rolled over, when only the first hours of the new day are
-    visible), both blocks are None: a block computed from a truncated slice
-    is not actually the day's most/least expensive window, and the
-    controller then falls back to its SoC-based modes instead of acting on
-    a wrong block. Missing points at the *start* of the day are tolerated:
-    candidate windows that cannot be fully covered are simply not
-    considered.
+    If the points do not reach at least ``max_block`` hours before the end
+    of the anchored day (a stale or heavily truncated price curve - e.g. a
+    pre-midnight window evaluated just after the day rolled over, when
+    only the first hours of the new day are visible), both blocks are
+    None: a block computed from such a truncated slice is not actually the
+    day's most/least expensive window, and the controller then falls back
+    to its SoC-based modes instead of acting on a wrong block. A short
+    missing tail (less than a full block - e.g. the last hour of the day
+    not yet published by the price source) is tolerated: candidate windows
+    that cannot be fully covered are simply not considered.
     """
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     day_end = day_start + timedelta(hours=24)
 
+    max_block_hours = max(float(use_hours), float(charge_hours))
+    min_valid_to = day_end - timedelta(hours=max_block_hours)
+
     if not prices:
         return None, None
     try:
-        covers_day = prices[-1].valid_to >= day_end
+        covered_enough = prices[-1].valid_to >= min_valid_to
     except TypeError:  # naive vs aware datetime - not comparable
-        covers_day = False
-    if not covers_day:
+        covered_enough = False
+    if not covered_enough:
         return None, None
 
     use_block = find_extreme_block(

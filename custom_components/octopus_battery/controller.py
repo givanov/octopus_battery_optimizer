@@ -284,16 +284,24 @@ class BatteryController:
         self._last_no_block_warn = now
         prices = self._coordinator.data or []
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(hours=24)
+        max_block_hours = max(
+            int(self._data.get(CONF_USE_HOURS, 4)),
+            int(self._data.get(CONF_CHARGE_HOURS, 4)),
+        )
         _LOGGER.warning(
             "No schedule block: %d price points span %s -> %s but the "
-            "anchored day is %s -> %s. The curve must extend to the end of "
-            "the current day for blocks to be selected - check the price "
-            "source entity's rates attribute.",
+            "anchored day is %s -> %s (the curve must reach at least %s "
+            "for blocks of up to %d h). Check the price source entity's "
+            "rates attribute - if the source only publishes past slots of "
+            "the day, future blocks cannot be computed from it.",
             len(prices),
             prices[0].valid_from if prices else None,
             prices[-1].valid_to if prices else None,
             day_start,
-            day_start + timedelta(hours=24),
+            day_end,
+            day_end - timedelta(hours=max_block_hours),
+            max_block_hours,
         )
 
     async def _set_switch(self, entity_id: str, turn_on: bool) -> bool:

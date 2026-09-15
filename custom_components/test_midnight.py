@@ -15,7 +15,9 @@ Fixes under test (pure schedule module, no Home Assistant imports):
   3. A tail-truncated (partial-day) curve yields no blocks at all instead
      of a garbage block (coverage guard in ``select_schedule``), while a
      curve that only starts mid-day still produces blocks (no false
-     unknown), and a naive/aware datetime mix does not raise.
+     unknown), a curve missing only the final hour still produces blocks
+     (real-world shape: source publishes slots up to ~now), and a
+     naive/aware datetime mix does not raise.
   4. Mid-day and past-midnight (23:00-03:00) blocks still work.
 """
 
@@ -162,6 +164,48 @@ use_block, charge_block = select_schedule(
 check(
     "naive/aware mix -> (None, None) without raising",
     use_block is None and charge_block is None,
+)
+
+# -------------------------------------------------------------------------
+# 3d. Real-world shape: day minus the final hour (source publishes slots
+#     up to ~now and never publishes the tail) -> blocks ARE computed from
+#     the fully-covered windows (missing tail < max_block is tolerated).
+# -------------------------------------------------------------------------
+# 2 look-behind slots + DAY0 slots 0-45 (00:00-22:30, last valid_to 23:00).
+curve = [
+    slot(DAYM1, s, 20.0) for s in (46, 47)
+] + [slot(DAY0, s, 20.0) for s in range(46)]
+windowed = combine_price_points(
+    curve, now=DAY0 + timedelta(hours=12), max_block_hours=4
+)
+use_block, charge_block = select_schedule(
+    windowed, use_hours=4, charge_hours=4, now=DAY0 + timedelta(hours=12)
+)
+check(
+    "day minus final hour -> block computed from fully-covered windows",
+    charge_block is not None
+    and charge_block.start == DAY0
+    and charge_block.end == DAY0 + timedelta(hours=4),
+    f"got {charge_block.start if charge_block else None}-{charge_block.end if charge_block else None}",
+)
+
+# -------------------------------------------------------------------------
+# 3e. Boundary: curve ends exactly at day_end - max_block -> still OK.
+# -------------------------------------------------------------------------
+# DAY0 slots 0-39 (00:00-19:30, last valid_to 20:00 = day_end - 4 h).
+curve = [
+    slot(DAYM1, s, 20.0) for s in (46, 47)
+] + [slot(DAY0, s, 20.0) for s in range(40)]
+windowed = combine_price_points(
+    curve, now=DAY0 + timedelta(hours=12), max_block_hours=4
+)
+use_block, charge_block = select_schedule(
+    windowed, use_hours=4, charge_hours=4, now=DAY0 + timedelta(hours=12)
+)
+check(
+    "curve ending exactly at day_end - max_block -> block computed",
+    charge_block is not None and charge_block.start == DAY0,
+    f"got {charge_block.start if charge_block else None}",
 )
 
 # -------------------------------------------------------------------------
