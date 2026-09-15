@@ -123,9 +123,24 @@ def select_schedule(
     keeps the schedule stable for the whole day (so we never abandon a
     block we are already in) while still allowing a block to run past
     midnight. The next day's blocks only become active once that day starts.
+
+    *prices* must be sorted by start time (see ``combine_price_points``).
+    If the points do not cover the whole anchored day (a stale or partial
+    price curve - e.g. a pre-midnight window evaluated just after the day
+    rolled over), both blocks are None: a block computed from a partial day
+    is not actually the day's most/least expensive window, and the
+    controller then falls back to its SoC-based modes instead of acting on
+    a wrong block.
     """
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     day_end = day_start + timedelta(hours=24)
+
+    if (
+        not prices
+        or prices[0].valid_from > day_start
+        or prices[-1].valid_to < day_end
+    ):
+        return None, None
 
     use_block = find_extreme_block(
         prices,
@@ -164,13 +179,17 @@ def combine_price_points(
     window the API-based coordinator uses, and returned sorted by start time.
 
     The window spans from one hour before the start of the current calendar
-    day to ``max_block_hours + 1`` hours after the *next* day's start, so that
-    day-anchored blocks that run past midnight are fully covered. Pure - no
-    Home Assistant imports.
+    day to ``max_block_hours + 1`` hours after the *day after next*'s start
+    - i.e. it includes the full current day and the full next day. Including
+    the whole next day (not just ``max_block_hours`` past midnight) matters
+    at the day boundary: once the schedule anchor rolls over to the new
+    day, its blocks need the entire new day, and the data published just
+    before midnight (which already contains the next day) must be usable
+    for the first ticks of the new day. Pure - no Home Assistant imports.
     """
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     keep_from = day_start - timedelta(hours=1)
-    keep_to = day_start + timedelta(hours=24 + max_block_hours + 1)
+    keep_to = day_start + timedelta(hours=48 + max_block_hours + 1)
 
     by_start: dict[datetime, PricePoint] = {}
     for point in points:

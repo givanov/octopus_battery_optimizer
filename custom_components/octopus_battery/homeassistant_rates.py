@@ -32,6 +32,7 @@ so the controller is unchanged.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
@@ -267,9 +268,11 @@ class HomeAssistantRatesCoordinator(DataUpdateCoordinator[list[PricePoint]]):
     def _window_bounds(self) -> tuple[datetime, datetime]:
         """Return the (keep_from, keep_to) window for the current day.
 
-        Matches the API-based coordinator: from one hour before the start of
-        the current calendar day to ``max_block + 1`` hours after the next
-        day's start.
+        Matches ``combine_price_points``: from one hour before the start of
+        the current calendar day to ``max_block + 1`` hours after the *day
+        after next*'s start - i.e. the full current day and the full next
+        day, so that day-anchored blocks that run past midnight (and the
+        first ticks of the new day) are fully covered.
         """
         data = effective_data(self.config_entry)
         max_block_hours = max(
@@ -279,7 +282,7 @@ class HomeAssistantRatesCoordinator(DataUpdateCoordinator[list[PricePoint]]):
         day_start = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
         return (
             day_start - timedelta(hours=1),
-            day_start + timedelta(hours=24 + max_block_hours + 1),
+            day_start + timedelta(hours=48 + max_block_hours + 1),
         )
 
     def _windowed(self) -> list[PricePoint]:
@@ -298,7 +301,13 @@ class HomeAssistantRatesCoordinator(DataUpdateCoordinator[list[PricePoint]]):
         """Publish the current (windowed) cache to listeners."""
         if not self._rates:
             return
-        await self.async_set_updated_data(self._windowed())
+        # Home Assistant's ``DataUpdateCoordinator.async_set_updated_data``
+        # is a synchronous @callback (returns None); very old HA releases
+        # had an async version. Call it without awaiting and only await a
+        # coroutine result, so both work (awaiting None raises TypeError).
+        result = self.async_set_updated_data(self._windowed())
+        if inspect.iscoroutine(result):
+            await result
 
     # ------------------------------------------------------------------
     # Coordinator update

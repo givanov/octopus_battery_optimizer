@@ -38,7 +38,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Safety cap on how many pages we will walk (newest-first) to cover the
 # look-behind window. A page holds 100 half-hourly slots = 50 h, so 3 pages
-# already cover 150 h of history - far more than the ~24 h we need.
+# already cover 150 h of history - far more than the ~53 h we need.
 MAX_PAGES = 3
 
 
@@ -88,12 +88,13 @@ class OctopusPriceCoordinator(DataUpdateCoordinator[list[PricePoint]]):
 
         now = dt_util.now()
         # Day-anchored blocks start within [today 00:00, tomorrow 00:00) and
-        # may run up to max_block_hours past midnight, so keep:
-        keep_from = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=1)
-        keep_to = (
-            now.replace(hour=0, minute=0, second=0, microsecond=0)
-            + timedelta(hours=24 + max_block_hours + 1)
-        )
+        # may run up to max_block_hours past midnight, so keep the full
+        # current day and the full next day (matching combine_price_points,
+        # so the first ticks of the new day are served from the
+        # pre-midnight fetch):
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        keep_from = day_start - timedelta(hours=1)
+        keep_to = day_start + timedelta(hours=48 + max_block_hours + 1)
 
         raw_entries: list[dict[str, Any]] = []
         oldest: datetime | None = None
