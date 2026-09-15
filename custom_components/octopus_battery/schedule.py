@@ -30,20 +30,13 @@ class PricePoint:
 
 @dataclass(frozen=True)
 class Block:
-    """A contiguous block of hours selected from the price curve."""
+    """A block of hours selected from the price curve (may contain a
+    bounded amount of missing data, see ``find_extreme_block``)."""
 
     start: datetime
     end: datetime
     total: float
     hours: int
-
-
-def is_contiguous(points: Sequence[PricePoint]) -> bool:
-    """Return True if *points* form an unbroken chain of hours."""
-    for i in range(1, len(points)):
-        if points[i].valid_from != points[i - 1].valid_to:
-            return False
-    return True
 
 
 def find_extreme_block(
@@ -53,9 +46,10 @@ def find_extreme_block(
     find_max: bool,
     start_lo: Optional[datetime] = None,
     start_hi: Optional[datetime] = None,
+    max_gap: Optional[timedelta] = timedelta(hours=1),
 ) -> Optional[Block]:
-    """Find the contiguous window of price points spanning ``duration_hours``
-    with the highest (find_max=True) or lowest (find_max=False) total value.
+    """Find the window of price points spanning ``duration_hours`` with the
+    highest (find_max=True) or lowest (find_max=False) total value.
 
     The window is matched by *duration*, not point count, so it works
     correctly whether the tariff is priced hourly or half-hourly (the
@@ -67,40 +61,72 @@ def find_extreme_block(
     calendar day while still allowing the block to extend past the day's
     end (e.g. a 23:00-03:00 block).
 
-    Returns None if no suitable contiguous window exists.
+    Windows may contain a bounded amount of missing data (at most
+    ``max_gap`` in total, 1 h by default) - e.g. the final hour of a day
+    that a price source has not published yet while the next day's slots
+    are already available (the overnight window is then still evaluable).
+    The missing time is valued at the window's own average of the known
+    slots, so the window's mean over its full duration is unbiased by the
+    gap; ``Block.total`` for such a window is that estimate.
+
+    Returns None if no suitable window exists.
     """
     if duration_hours <= 0 or not prices:
         return None
 
     target = timedelta(hours=duration_hours)
     n = len(prices)
-    first_dur = prices[0].valid_to - prices[0].valid_from
-    if first_dur <= timedelta(0):
-        return None
-
-    # Uniform granularity is the real case (hourly or half-hourly); derive
-    # how many consecutive points span the target duration.
-    n_points = int(round(target.total_seconds() / first_dur.total_seconds()))
-    if n_points < 1 or n < n_points:
-        return None
 
     best: Optional[Block] = None
-    for i in range(n - n_points + 1):
-        window = prices[i : i + n_points]
-        if not is_contiguous(window):
-            continue
-        span = window[-1].valid_to - window[0].valid_from
-        if abs(span - target) > timedelta(minutes=1):
-            continue  # mixed granularity that doesn't line up
-        start = window[0].valid_from
+    for i in range(n):
+        start = prices[i].valid_from
         if start_lo is not None and start < start_lo:
             continue
         if start_hi is not None and start >= start_hi:
+            break  # sorted by start time - no later start can qualify
+        window_end = start + target
+        prev_end = start
+        gap_total = timedelta(0)
+        values: list[float] = []
+        j = i
+        ok = True
+        while prev_end < window_end and ok:
+            if j >= n:
+                break
+            p = prices[j]
+            if p.valid_from < prev_end:
+                j += 1  # overlapping/misaligned point - skip
+                continue
+            if p.valid_from >= window_end:
+                break  # trailing gap, handled below
+            gap = p.valid_from - prev_end  # >= 0
+            if max_gap is not None and gap_total + gap > max_gap:
+                ok = False
+                break
+            gap_total += gap
+            if p.valid_to > window_end:
+                ok = False  # point crosses the window boundary (misaligned)
+                break
+            values.append(p.value)
+            prev_end = p.valid_to
+            j += 1
+        if not ok:
             continue
-        total = sum(p.value for p in window)
+        if prev_end < window_end:
+            trailing = window_end - prev_end
+            if max_gap is not None and gap_total + trailing > max_gap:
+                continue
+            gap_total += trailing
+        total = sum(values)
+        if gap_total:
+            # Fill the missing time at the window's own average: the
+            # window's mean over its full duration equals the mean of the
+            # known slots (so the estimate is not biased by the gap).
+            known = (window_end - start) - gap_total
+            total = total * (window_end - start) / known
         candidate = Block(
             start=start,
-            end=window[-1].valid_to,
+            end=window_end,
             total=total,
             hours=duration_hours,
         )
@@ -133,8 +159,11 @@ def select_schedule(
     day's most/least expensive window, and the controller then falls back
     to its SoC-based modes instead of acting on a wrong block. A short
     missing tail (less than a full block - e.g. the last hour of the day
-    not yet published by the price source) is tolerated: candidate windows
-    that cannot be fully covered are simply not considered.
+    not yet published by the price source) is tolerated, as are bounded
+    gaps (at most one hour) inside a window - e.g. the missing final hour
+    of a day when the next day's slots are already available (so the
+    overnight window is still evaluable); such gaps are valued at the
+    window's own average.
     """
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     day_end = day_start + timedelta(hours=24)
