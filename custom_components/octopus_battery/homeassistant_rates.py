@@ -106,6 +106,8 @@ class HomeAssistantRatesCoordinator(DataUpdateCoordinator[list[PricePoint]]):
         self._unsub_events: Optional[Callable[[], None]] = None
         # Throttling for the "rates unparseable" warning (see _merge_rates).
         self._last_parse_warn: Optional[datetime] = None
+        # Throttling for the "sources incomplete" warning (see _async_update_data).
+        self._last_source_diag: Optional[datetime] = None
         # Rate cache keyed by slot start time. Merged from the event entities
         # and from live events; pruned to the relevant window after each
         # update so it stays bounded.
@@ -344,8 +346,48 @@ class HomeAssistantRatesCoordinator(DataUpdateCoordinator[list[PricePoint]]):
 
         # Refresh the cache from the event entities (authoritative, and what
         # the integration persists). Live events keep it up to date in between.
+        source_report: list[str] = []
+        empty_sources = 0
         for related_id in self._related_entity_ids():
-            self._merge_rates(self._read_entity(related_id))
+            rates = self._read_entity(related_id)
+            if rates:
+                first = rates[0] if isinstance(rates[0], dict) else {}
+                last = rates[-1] if isinstance(rates[-1], dict) else {}
+                source_report.append(
+                    f"{related_id}: {len(rates)} rates "
+                    f"({first.get('start', '?')} -> {last.get('end', '?')})"
+                )
+            else:
+                found = self.hass.states.get(related_id) is not None
+                source_report.append(
+                    f"{related_id}: "
+                    + (
+                        "found but no rates attribute"
+                        if found
+                        else "NOT FOUND"
+                    )
+                )
+                empty_sources += 1
+            self._merge_rates(rates)
+        _LOGGER.debug("Rate sources: %s", " | ".join(source_report))
+        # A missing/empty derived entity (e.g. next-day rates) silently
+        # truncates the curve; make it visible (throttled to 1 h).
+        now = dt_util.now()
+        if (
+            empty_sources
+            and (
+                self._last_source_diag is None
+                or now - self._last_source_diag >= timedelta(hours=1)
+            )
+        ):
+            self._last_source_diag = now
+            _LOGGER.warning(
+                "Rate sources incomplete: %s. The anchored day must be fully "
+                "covered for schedule blocks to be selected - check that the "
+                "derived next/previous day rate entities exist with the "
+                "expected suffix and carry a 'rates' attribute.",
+                " | ".join(source_report),
+            )
 
         if not self._rates:
             raise UpdateFailed(
