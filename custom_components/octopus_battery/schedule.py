@@ -125,21 +125,26 @@ def select_schedule(
     midnight. The next day's blocks only become active once that day starts.
 
     *prices* must be sorted by start time (see ``combine_price_points``).
-    If the points do not cover the whole anchored day (a stale or partial
-    price curve - e.g. a pre-midnight window evaluated just after the day
-    rolled over), both blocks are None: a block computed from a partial day
+    If the points do not extend to the end of the anchored day (a stale or
+    truncated price curve - e.g. a pre-midnight window evaluated just after
+    the day rolled over, when only the first hours of the new day are
+    visible), both blocks are None: a block computed from a truncated slice
     is not actually the day's most/least expensive window, and the
     controller then falls back to its SoC-based modes instead of acting on
-    a wrong block.
+    a wrong block. Missing points at the *start* of the day are tolerated:
+    candidate windows that cannot be fully covered are simply not
+    considered.
     """
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     day_end = day_start + timedelta(hours=24)
 
-    if (
-        not prices
-        or prices[0].valid_from > day_start
-        or prices[-1].valid_to < day_end
-    ):
+    if not prices:
+        return None, None
+    try:
+        covers_day = prices[-1].valid_to >= day_end
+    except TypeError:  # naive vs aware datetime - not comparable
+        covers_day = False
+    if not covers_day:
         return None, None
 
     use_block = find_extreme_block(

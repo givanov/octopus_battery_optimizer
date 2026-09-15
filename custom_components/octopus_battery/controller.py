@@ -80,6 +80,8 @@ class BatteryController:
         self._unsub_tick: Optional[Callable[[], None]] = None
         self._unsub_prices: Optional[Callable[[], None]] = None
         self._applied: Optional[tuple[bool, bool]] = None
+        # Throttling for the "no block" diagnostic (see async_evaluate).
+        self._last_no_block_warn: Optional[datetime] = None
 
     def _read_dry_run(self, entry: ConfigEntry) -> bool:
         """Resolve the dry-run flag, preferring the switch-owned entry.data.
@@ -194,6 +196,9 @@ class BatteryController:
             except Exception as err:  # noqa: BLE001
                 self.last_error = f"Schedule selection failed: {err}"
                 _LOGGER.exception("Schedule selection failed")
+            else:
+                if use_block is None and charge_block is None:
+                    self._diagnose_missing_blocks(now)
         else:
             self.last_error = "No price data available yet"
             _LOGGER.debug("No price data available; using top-up logic only")
@@ -260,6 +265,35 @@ class BatteryController:
             "ON" if battery_on else "OFF",
             "ON" if shelly_on else "OFF",
             f"{self.soc:.1f}%" if self.soc is not None else "unknown",
+        )
+
+    def _diagnose_missing_blocks(self, now: datetime) -> None:
+        """Log (throttled) why no schedule block could be selected.
+
+        Price data is present but ``select_schedule`` returned no blocks:
+        usually the curve does not extend to the end of the current day
+        (see ``select_schedule``). Log the actual data boundaries so the
+        problem is visible in the log instead of silently showing unknown
+        block sensors. Warns at most once per hour.
+        """
+        if (
+            self._last_no_block_warn is not None
+            and now - self._last_no_block_warn < timedelta(hours=1)
+        ):
+            return
+        self._last_no_block_warn = now
+        prices = self._coordinator.data or []
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        _LOGGER.warning(
+            "No schedule block: %d price points span %s -> %s but the "
+            "anchored day is %s -> %s. The curve must extend to the end of "
+            "the current day for blocks to be selected - check the price "
+            "source entity's rates attribute.",
+            len(prices),
+            prices[0].valid_from if prices else None,
+            prices[-1].valid_to if prices else None,
+            day_start,
+            day_start + timedelta(hours=24),
         )
 
     async def _set_switch(self, entity_id: str, turn_on: bool) -> bool:

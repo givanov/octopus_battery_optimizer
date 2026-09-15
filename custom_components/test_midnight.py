@@ -12,8 +12,10 @@ Fixes under test (pure schedule module, no Home Assistant imports):
      full current day and the full next day).
   2. Just after midnight, the charge block is the new day's true cheapest
      window, and 00:00 itself is not inside it.
-  3. A truncated (partial-day) curve yields no blocks at all instead of a
-     garbage block (coverage guard in ``select_schedule``).
+  3. A tail-truncated (partial-day) curve yields no blocks at all instead
+     of a garbage block (coverage guard in ``select_schedule``), while a
+     curve that only starts mid-day still produces blocks (no false
+     unknown), and a naive/aware datetime mix does not raise.
   4. Mid-day and past-midnight (23:00-03:00) blocks still work.
 """
 
@@ -115,7 +117,7 @@ check(
 )
 
 # -------------------------------------------------------------------------
-# 3. Truncated (partial-day) curve -> no blocks (coverage guard)
+# 3. Tail-truncated curve -> no blocks (coverage guard)
 # -------------------------------------------------------------------------
 # The old bug shape: only the first 5 h of the new day are visible.
 truncated = [p for p in windowed if p.valid_from < DAY1 + timedelta(hours=5)]
@@ -126,6 +128,40 @@ check(
     "partial day -> no blocks (no garbage midnight block)",
     use_block is None and charge_block is None,
     f"got use={use_block}, charge={charge_block}",
+)
+
+# -------------------------------------------------------------------------
+# 3b. Curve starting mid-day (entity truncated to "now" onwards) -> blocks
+#     are STILL computed from the visible part (no false unknown).
+# -------------------------------------------------------------------------
+# DAY0 from 09:00 (slots 18-47) plus the full DAY1. All points are 20.0,
+# so the cheapest 4 h window is the first fully-visible one (09:00-13:00).
+curve = [slot(DAY0, s, 20.0) for s in range(18, 48)] + day_curve(DAY1)
+windowed = combine_price_points(
+    curve, now=DAY0 + timedelta(hours=12), max_block_hours=4
+)
+use_block, charge_block = select_schedule(
+    windowed, use_hours=4, charge_hours=4, now=DAY0 + timedelta(hours=12)
+)
+check(
+    "mid-day start curve -> blocks still computed from visible part",
+    charge_block is not None and charge_block.start >= DAY0 + timedelta(hours=9),
+    f"got {charge_block.start if charge_block else None}",
+)
+
+# -------------------------------------------------------------------------
+# 3c. Naive vs aware datetime mix -> no exception, no blocks.
+# -------------------------------------------------------------------------
+from datetime import timezone as _tz  # noqa: E402
+
+naive_curve = [slot(DAY0, s, 20.0) for s in range(48)]  # naive datetimes
+aware_now = DAY0.replace(tzinfo=_tz.utc) + timedelta(hours=12)
+use_block, charge_block = select_schedule(
+    naive_curve, use_hours=4, charge_hours=4, now=aware_now
+)
+check(
+    "naive/aware mix -> (None, None) without raising",
+    use_block is None and charge_block is None,
 )
 
 # -------------------------------------------------------------------------

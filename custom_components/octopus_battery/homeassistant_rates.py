@@ -104,6 +104,8 @@ class HomeAssistantRatesCoordinator(DataUpdateCoordinator[list[PricePoint]]):
         self._mpan: Optional[str] = None
         self._serial: Optional[str] = None
         self._unsub_events: Optional[Callable[[], None]] = None
+        # Throttling for the "rates unparseable" warning (see _merge_rates).
+        self._last_parse_warn: Optional[datetime] = None
         # Rate cache keyed by slot start time. Merged from the event entities
         # and from live events; pruned to the relevant window after each
         # update so it stays bounded.
@@ -224,6 +226,22 @@ class HomeAssistantRatesCoordinator(DataUpdateCoordinator[list[PricePoint]]):
             if point is not None:
                 self._rates[point.valid_from] = point
                 merged += 1
+        # A non-empty rates list that yields nothing (e.g. after a restart
+        # the attributes restored in an unexpected shape) would otherwise
+        # silently leave the cache empty; make it visible in the log.
+        if rates and merged == 0:
+            now = dt_util.now()
+            if (
+                self._last_parse_warn is None
+                or now - self._last_parse_warn > timedelta(hours=1)
+            ):
+                self._last_parse_warn = now
+                _LOGGER.warning(
+                    "Rate list is non-empty (%d entries) but no entry could "
+                    "be parsed as start/end/value_inc_vat; first entry: %r",
+                    len(rates),
+                    rates[0],
+                )
         return merged
 
     def _read_entity(self, entity_id: str) -> list[dict[str, Any]]:
